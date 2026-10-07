@@ -44,6 +44,9 @@ THEME_MIN = 2             # 테마로 묶는 최소 종목 수
 WINDOW = 63               # "3개월" = 63거래일
 VALUE_UNIT = 200.0       # 거래대금 가점: 200억=1점, 2,000억=2점, 2조=3점 (2026-10-07 사용자 "수천억~조 단위엔 가점")
 BACKFILL_FROM = "20260701"
+NEW_LOOKBACK = 20        # "NEW" = 직전 20거래일 동안 한 번도 테마로 안 나왔던 키워드
+COOL_DAYS = 3            # "식는 테마" = 직전 3거래일 안에 주도였는데 오늘은 주도 아님(최대 3개)
+STAT_H = (1, 5, 20)      # 성과 통계: 다음 날 시가 매수 → N거래일 뒤 종가, 지수 대비
 
 BASE = Path(__file__).parent              # 저장소/pipeline
 RAW = BASE / "raw"
@@ -457,6 +460,7 @@ def build():
         print("⚠ 매핑 안 된 네이버 테마:", sorted(unknown))
     days = sorted(p.stem for p in (RAW / "days").glob("*.json"))
     hist_lead, hist_seen = [], []
+    stat_rows = []
     months = defaultdict(list)
     search = defaultdict(set)
     for i, d in enumerate(days):
@@ -494,7 +498,16 @@ def build():
                 search[s["name"]].add(d)
             nm = t["name"]
             search[nm].add(d)
-            out_t.append({"name": nm, "lead": t["lead"], "etc": bool(t.get("etc")), "stocks": rows,
+            life = None
+            if not t.get("etc"):
+                k = 0
+                while k < len(hist_lead) and nm in hist_lead[-1 - k]:
+                    k += 1
+                if t["lead"] and k >= 2:
+                    life = f"{k}일째"
+                elif not any(nm in x for x in hist_seen[-1 - NEW_LOOKBACK:-1]) and i >= NEW_LOOKBACK:
+                    life = "NEW"
+            out_t.append({"name": nm, "lead": t["lead"], "etc": bool(t.get("etc")), "stocks": rows, "life": life,
                           "val": round(sum(r["val"] for r in rows), 1),
                           "lead3m": sum(nm in x for x in win_l), "seen3m": sum(nm in x for x in win_s)})
         n = sum(len(t["stocks"]) for t in themes)
@@ -509,9 +522,25 @@ def build():
         if top:
             summ += f" 최고 상승 {top['n']} {top['chg']:+.1f}%."
         srcs = sorted({s["u"]: s for s in srcs}.values(), key=lambda s: -s["chg"])[:8]
+        cool = []
+        for back in range(1, COOL_DAYS + 1):
+            if i - back < 0:
+                break
+            for nm in sorted(hist_lead[-1 - back]):
+                if nm not in hist_lead[-1] and nm not in cool:
+                    cool.append(nm)
+        cool = cool[:3]
+        for t in out_t:
+            if t["lead"]:
+                k = int(t["life"][:-2]) if t["life"] and t["life"].endswith("일째") else 1
+                grp = "lead1" if k == 1 else "lead2"
+            else:
+                grp = "other"
+            for r in t["stocks"]:
+                stat_rows.append((d, grp, r["c"]))
         months[d[:6]].append({"d": d, "kospi": day["kospi"], "kosdaq": day["kosdaq"], "n": n,
                               "src": day.get("src"), "summary": summ, "themes": out_t, "win": len(win_l),
-                              "news": [{"t": s["t"], "u": s["u"], "o": s["o"]} for s in srcs]})
+                              "news": [{"t": s["t"], "u": s["u"], "o": s["o"]} for s in srcs], "cool": cool})
     for m, arr in months.items():
         save(SITE / "data" / f"{m[:4]}-{m[4:]}.json", {"month": m, "days": arr})
     save(SITE / "data" / "index.json", {
@@ -522,6 +551,75 @@ def build():
                               default=""),
         "search": {k: sorted(v) for k, v in search.items()}})
     print("build", len(days), "days", len(months), "months")
+    stats(stat_rows, days)
+
+
+# ── 가격 캐시·성과 통계 (2026-10-07 시제품 → 본편) ─────────────────────
+def px_update(days):
+    """급등했던 종목 + 지수의 일봉(시가·종가)을 raw/px.json에 모은다. 최근 30거래일 급등주만 새로 받는다."""
+    f = RAW / "px.json"
+    px = load(f, {})
+    if not px and (RAW / "prices.json").exists():          # 최초 1회: 소급용 대량 파일에서 급등주만 추림
+        P = load(RAW / "prices.json")["prices"]
+        codes = {x["code"] for d in days for x in load(RAW / "days" / f"{d}.json")["stocks"] if passes(x)}
+        px = {c: {r[0]: [r[1], r[4]] for r in P[c]} for c in codes | {"KOSPI", "KOSDAQ"} if c in P}
+    recent = days[-30:]
+    codes = {x["code"] for d in recent for x in load(RAW / "days" / f"{d}.json")["stocks"] if passes(x)}
+    codes |= {"KOSPI", "KOSDAQ"}
+    start = (datetime.strptime(recent[0], "%Y%m%d") - timedelta(days=7)).strftime("%Y%m%d")
+    end = datetime.now(KST).strftime("%Y%m%d")
+
+    def job(c):
+        u = (f"https://api.finance.naver.com/siseJson.naver?symbol={c}&requestType=1"
+             f"&startTime={start}&endTime={end}&timeframe=day")
+        try:
+            t = requests.get(u, headers=H, timeout=15).text
+        except Exception:
+            return c, []
+        return c, re.findall(r'\["(\d{8})",\s*([\d.]+),\s*[\d.]+,\s*[\d.]+,\s*([\d.]+)', t)
+    with ThreadPoolExecutor(6) as ex:
+        for c, rows in ex.map(job, sorted(codes)):
+            for d, o, cl in rows:
+                px.setdefault(c, {})[d] = [float(o), float(cl)]
+    save(f, px)
+    return px
+
+
+def stats(rows, days):
+    px = load(RAW / "px.json", {})
+    if not px:
+        print("px.json 없음 — 통계 건너뜀")
+        return
+    mk = {x["code"]: x.get("mk", "KOSDAQ") for d in days for x in load(RAW / "days" / f"{d}.json")["stocks"]}
+    cal = sorted(px.get("KOSPI", {}))
+
+    def fwd(c, d, h):
+        if d not in cal:
+            return None
+        j = cal.index(d)
+        if j + h >= len(cal):
+            return None
+        d1, dh = cal[j + 1], cal[j + h]
+        a, b = px.get(c, {}).get(d1), px.get(c, {}).get(dh)
+        return (b[1] / a[0] - 1) * 100 if a and b and a[0] > 0 else None
+    agg = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    for d, grp, c in rows:
+        ix = "KOSPI" if mk.get(c) == "KOSPI" else "KOSDAQ"
+        for h in STAT_H:
+            r, m = fwd(c, d, h), fwd(ix, d, h)
+            if r is not None and m is not None:
+                agg[grp][h][d].append(r - m)
+    out = {}
+    for grp, hs in agg.items():
+        out[grp] = {}
+        for h, byd in hs.items():
+            per = [sum(v) / len(v) for v in byd.values()]
+            n = sum(len(v) for v in byd.values())
+            out[grp][str(h)] = {"mean": round(sum(per) / len(per), 2), "win": round(sum(x > 0 for x in per) / len(per) * 100),
+                                "days": len(per), "n": n}
+    save(SITE / "data" / "stats.json", {"groups": out, "from": days[0], "to": days[-1],
+                                        "updated": datetime.now(KST).strftime("%Y-%m-%d %H:%M")})
+    print("stats", {g: {h: v["mean"] for h, v in hs.items()} for g, hs in out.items()})
 
 
 # ── 공모주 일정 (2026-10-07 사용자: "공모주 청약일정 내 캘린더에 저장해줘. 우선 멜콘/엘리스그룹만") ──
@@ -623,6 +721,8 @@ if __name__ == "__main__":
         news_all()
     elif cmd == "build":
         build()
+    elif cmd == "px":
+        px_update(sorted(p.stem for p in (RAW / "days").glob("*.json")))
     elif cmd == "publish":
         publish()
     elif cmd == "ipo":
@@ -656,6 +756,10 @@ if __name__ == "__main__":
                 if collect() is None:
                     sys.exit(0)
                 news_all()
+                try:
+                    px_update(sorted(p.stem for p in (RAW / "days").glob("*.json")))
+                except Exception as e:
+                    print("px_update fail", e)
             build()
             if not publish():
                 notify_fail("깃허브 push")
