@@ -738,6 +738,9 @@ if __name__ == "__main__":
         print("gnews", len(r or []), (r or [{}])[0].get("t"))
         print("stocknews", bool(jget(f"{API}/news/stock/005930?pageSize=5&page=1")))
         print("themes", len((jget(f"{API}/stocks/theme?page=1&pageSize=100") or {}).get("groups", [])))
+        t = requests.get("https://api.finance.naver.com/siseJson.naver?symbol=005930&requestType=1&startTime=20261001"
+                         "&endTime=20261006&timeframe=day", headers=H, timeout=15).text
+        print("siseJson", t.count('["2026'))
     elif cmd == "daily":
         today = datetime.now(KST).strftime("%Y%m%d")
         if not IN_ACTIONS:                   # PC = 예비 실행. 깃허브 액션이 이미 했으면 건너뜀
