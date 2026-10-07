@@ -50,6 +50,9 @@ COOL_DAYS = 3            # "식는 테마" = 직전 3거래일 안에 주도였�
 STAT_H = (1, 5, 20)      # 성과 통계: 다음 날 시가 매수 → N거래일 뒤 종가, 지수 대비
 BREADTH_HI = 0.70        # 찐 대장: 주도 테마의 거래대금 1위 + 테마 확산도 70%↑(구성 5종목↑). 미달이면 "혼자 튐"
 BREADTH_MIN_N = 5        # (2026-10-07 65일 검정: 찐 대장 +0.5/+0.1% vs 혼자 튐 −3.9/−6.0%, 1/5일 지수 대비)
+BASE_TOP = 1200          # 기준선 = 시총 상위 1,200 보통주에서 무작위 400개 · 매일 아무 날에 샀다면 (2026-10-07 factstock 방식)
+BASE_N = 400             #   "승률 35%"가 좋은지 나쁜지 읽으려면 같은 정의의 비교선이 필요하다
+LIMIT_UP = 29.5          # 그날 온도: 상한가 = +29.5% 이상
 
 BASE = Path(__file__).parent              # 저장소/pipeline
 RAW = BASE / "raw"
@@ -629,9 +632,16 @@ def build():
                 stat_rows.append((d, grp, r["c"]))
                 if "_g2" in r:
                     stat_rows.append((d, r.pop("_g2"), r["c"]))
-        months[d[:6]].append({"d": d, "kospi": day["kospi"], "kosdaq": day["kosdaq"], "n": n,
+        temp = {"lim": sum(x["chg"] >= LIMIT_UP for x in day["stocks"]),
+                "p15": sum(x["chg"] >= 15 for x in day["stocks"]), "up": len(day["stocks"])}
+        months[d[:6]].append({"d": d, "kospi": day["kospi"], "kosdaq": day["kosdaq"], "n": n, "temp": temp,
                               "src": day.get("src"), "summary": summ, "themes": out_t, "win": len(win_l),
                               "news": [{"t": s["t"], "u": s["u"], "o": s["o"]} for s in srcs], "cool": cool})
+    # 온도 단계 0~4 = 전체 기록에서 "4%↑ 종목 수"의 5분위 (국면이 바뀌어도 상대 비교가 되게)
+    ups = sorted(x["temp"]["up"] for arr in months.values() for x in arr)
+    for arr in months.values():
+        for x in arr:
+            x["temp"]["lv"] = min(4, sum(u < x["temp"]["up"] for u in ups) * 5 // max(1, len(ups)))
     for m, arr in months.items():
         save(SITE / "data" / f"{m[:4]}-{m[4:]}.json", {"month": m, "days": arr})
     save(SITE / "data" / "index.json", {
@@ -646,6 +656,32 @@ def build():
 
 
 # ── 가격 캐시·성과 통계 (2026-10-07 시제품 → 본편) ─────────────────────
+def base_codes():
+    """기준선 표본 {code: mk}. 처음 한 번만 뽑아 raw/base_codes.json에 고정한다(매번 바뀌면 숫자가 흔들린다)."""
+    f = RAW / "base_codes.json"
+    got = load(f, {})
+    if got:
+        return got
+    import random
+    pool = []
+    for mk in ("KOSPI", "KOSDAQ"):
+        for pg in range(1, 30):
+            st = (jget(f"{API}/stocks/marketValue/{mk}?page={pg}&pageSize=100") or {}).get("stocks", [])
+            for x in st:
+                code, name = x["itemCode"], x["stockName"]
+                if x.get("stockEndType") != "stock" or code[-1] != "0" or "스팩" in name:
+                    continue
+                pool.append((num(x.get("marketValue")), code, mk))
+            if len(st) < 100:
+                break
+    pool = sorted(pool, reverse=True)[:BASE_TOP]
+    pick = random.Random(7).sample(pool, min(BASE_N, len(pool)))
+    got = {c: mk for _, c, mk in pick}
+    save(f, got)
+    print("base_codes", len(got), "from", len(pool))
+    return got
+
+
 def px_update(days):
     """급등했던 종목 + 지수의 일봉(시가·종가)을 raw/px.json에 모은다. 최근 30거래일 급등주만 새로 받는다."""
     f = RAW / "px.json"
@@ -657,12 +693,16 @@ def px_update(days):
     recent = days[-30:]
     codes = {x["code"] for d in recent for x in load(RAW / "days" / f"{d}.json")["stocks"] if passes(x)}
     codes |= {"KOSPI", "KOSDAQ"}
+    base = set(base_codes())
+    codes |= base
     start = (datetime.strptime(recent[0], "%Y%m%d") - timedelta(days=7)).strftime("%Y%m%d")
+    full = (datetime.strptime(days[0], "%Y%m%d") - timedelta(days=7)).strftime("%Y%m%d")
     end = datetime.now(KST).strftime("%Y%m%d")
+    new = {c for c in base if c not in px}                 # 기준선 표본은 처음 받을 때 전 기간
 
     def job(c):
         u = (f"https://api.finance.naver.com/siseJson.naver?symbol={c}&requestType=1"
-             f"&startTime={start}&endTime={end}&timeframe=day")
+             f"&startTime={full if c in new else start}&endTime={end}&timeframe=day")
         try:
             t = requests.get(u, headers=H, timeout=15).text
         except Exception:
@@ -683,11 +723,15 @@ def stats(rows, days):
         return
     mk = {x["code"]: x.get("mk", "KOSDAQ") for d in days for x in load(RAW / "days" / f"{d}.json")["stocks"]}
     cal = sorted(px.get("KOSPI", {}))
+    pos = {d: j for j, d in enumerate(cal)}
+    base = load(RAW / "base_codes.json", {})
+    mk.update(base)
+    rows = list(rows) + [(d, "base", c) for d in days for c in base]
 
     def fwd(c, d, h):
-        if d not in cal:
+        if d not in pos:
             return None
-        j = cal.index(d)
+        j = pos[d]
         if j + h >= len(cal):
             return None
         d1, dh = cal[j + 1], cal[j + h]
@@ -705,8 +749,11 @@ def stats(rows, days):
         out[grp] = {}
         for h, byd in hs.items():
             per = [sum(v) / len(v) for v in byd.values()]
-            n = sum(len(v) for v in byd.values())
+            allv = sorted(x for v in byd.values() for x in v)
+            n = len(allv)
+            med = (allv[n // 2] + allv[(n - 1) // 2]) / 2
             out[grp][str(h)] = {"mean": round(sum(per) / len(per), 2), "win": round(sum(x > 0 for x in per) / len(per) * 100),
+                                "med": round(med, 2), "pwin": round(sum(x > 0 for x in allv) / n * 100),
                                 "days": len(per), "n": n}
     save(SITE / "data" / "stats.json", {"groups": out, "from": days[0], "to": days[-1],
                                         "updated": datetime.now(KST).strftime("%Y-%m-%d %H:%M")})

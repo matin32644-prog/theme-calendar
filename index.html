@@ -68,8 +68,10 @@ h1 span{color:var(--muted)}
 .hd div{padding:10px 0;text-align:center;font-size:12px;letter-spacing:.12em;color:var(--muted);
   border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg)}
 .cell{min-height:118px;padding:7px 8px 8px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
-  cursor:pointer;overflow:hidden;min-width:0}
+  cursor:pointer;overflow:hidden;min-width:0;position:relative}
 .cell:hover{background:var(--chip)}
+.heat{position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--up)}
+.heat.h1{opacity:.16}.heat.h2{opacity:.36}.heat.h3{opacity:.6}.heat.h4{opacity:.92}
 .cell.out .dn{color:var(--muted)}
 .cell.out{opacity:.72}
 .cell.today{background:var(--today)}
@@ -99,6 +101,8 @@ h1 span{color:var(--muted)}
 .sh h2{margin:0;font-size:22px;font-weight:800}
 .x{border:1px solid var(--line2);background:var(--card);color:var(--ink);border-radius:10px;padding:7px 12px;font:inherit;cursor:pointer}
 .idx{margin:6px 0 10px;font-size:14px;color:var(--muted)}
+.temp{margin:-4px 0 10px;font-size:13px;color:var(--muted)}
+.temp b{color:var(--ink)}
 .idx b{font-weight:600}
 .summ{font-size:15px;line-height:1.6;margin:0 0 4px}
 .meta{font-size:13px;color:var(--muted);margin-bottom:14px}
@@ -138,6 +142,12 @@ h1 span{color:var(--muted)}
 .sr .m{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700}
 .sr .m.u{color:var(--up)} .sr .m.d{color:var(--down)}
 .sr small{color:var(--muted);font-size:12px;margin-left:6px}
+.sr .rv{text-align:right;min-width:0}
+.sr .rv small{display:block;margin-left:0}
+.sr .dl{font-size:12px;font-weight:700;margin-left:6px;white-space:nowrap}
+.sr .dl.u{color:var(--up)} .sr .dl.d{color:var(--down)}
+.sg.base{background:transparent;border:1.5px dashed var(--line2)}
+.sg .sub{margin:-2px 0 6px;font-size:12px;color:var(--muted)}
 .tg{margin-left:5px;font-size:14px;vertical-align:0}
 .kw{display:inline-block;font-size:11px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:0 7px;margin:5px 4px 0 0}
 .why a{text-decoration:none;color:var(--muted)} .why a:hover{text-decoration:underline}
@@ -230,6 +240,7 @@ async function render(m){
         if (oth.length>1) inner += '<div class="more">외 '+(oth.length-1)+'개</div>';
         if (!day.themes.length) inner += '<div class="hol">급등 종목 없음</div>';
         nxtThemes(day).slice(0,2).forEach(n=> inner += '<span class="nx"><em>장후</em>'+esc(n)+'</span>');
+        if (day.temp && day.temp.lv > 0) inner += '<i class="heat h'+day.temp.lv+'"></i>';
       } else if (k < lastData && k < today && !out && !IPO[k]){
         inner += '<div class="hol">휴장</div>';
       }
@@ -249,7 +260,8 @@ async function render(m){
   $("#foot").innerHTML = "이 달 기록 "+n+"거래일 · 평일 16시 30분(본장), 20시 40분(넥장) 무렵 자동 갱신 · 마지막 갱신 "+esc(IDX.updated)+
     "<br>급등 기준: 정규장 +"+r.chg+"% 이상 · 거래대금 "+r.val+"억 이상. 테마 순위 = 거래대금 점수 합("+(r.unit||200)+"억=1점, 10배마다 +1점). "+
     "주도 테마 = 급등 "+r.lead_min+"종목 이상 또는 점수 "+(r.lead_score||4)+"점 이상인 상위 3개. 테마 이름은 네이버 테마 키워드 기준"+
-    (IDX.backfill_until ? "<br>"+fmtD(IDX.backfill_until)+"까지는 소급 기록(테마 구성은 2026-10 기준이라 근사치, 넥장 없음)" : "");
+    (IDX.backfill_until ? "<br>"+fmtD(IDX.backfill_until)+"까지는 소급 기록(테마 구성은 2026-10 기준이라 근사치, 넥장 없음)" : "")+
+    "<br>칸 아래 빨간 막대 = 그날 온도. 4% 넘게 오른 종목 수를 기록 전체와 비교한 5단계(진할수록 뜨거운 장)";
 }
 function fmtD(k){ return k.slice(0,4)+"-"+k.slice(4,6)+"-"+k.slice(6); }
 
@@ -285,6 +297,8 @@ function openDay(day){
   const dt = new Date(+day.d.slice(0,4), +day.d.slice(4,6)-1, +day.d.slice(6));
   let h = '<div class="sh"><h2>'+(dt.getMonth()+1)+'월 '+dt.getDate()+'일 ('+WD[dt.getDay()]+')</h2><button class="x" id="xb">닫기</button></div>';
   h += '<div class="idx">코스피 <b class="'+(day.kospi>=0?"u":"d")+'">'+pct(day.kospi)+'</b> &nbsp; 코스닥 <b>'+pct(day.kosdaq)+'</b></div>';
+  if (day.temp){ const T=["차가움","서늘","보통","따뜻","뜨거움"], t=day.temp;
+    h += '<div class="temp">🌡 그날 온도 <b>'+T[t.lv]+'</b> · 상한가 '+t.lim+' · 15%↑ '+t.p15+' · 4%↑ '+t.up+'종목</div>'; }
   h += '<p class="summ">'+esc(day.summary)+'</p>';
   h += '<div class="meta">KRX 정규장 급등 '+day.n+'종목 분석'+(day.src==="backfill"?'<span class="tag">소급</span>':'')+'</div>';
   h += ipoHtml(day.d);
@@ -386,20 +400,27 @@ async function openKings(m){
 }
 async function openStats(){
   let S; try{ S = await fetch("data/stats.json?t="+Date.now()).then(r=>r.json()); }catch(e){ return; }
-  const nm = {lead1:"주도 1일차 종목", lead2:"주도 2일째+ 종목", other:"비교군 · 주도 아닌 급등주",
+  const nm = {base:"기준선 · 아무 종목 아무 날", lead1:"주도 1일차 종목", lead2:"주도 2일째+ 종목", other:"비교군 · 주도 아닌 급등주",
               king:"👑 찐 대장 · 확산 높은 테마의 거래대금 1위", solo:"⚠ 혼자 튐 · 확산 낮은 테마의 거래대금 1위",
               fol_hi:"추종 · 확산 높은 테마", fol_lo:"추종 · 확산 낮은 테마"};
   const f = k => k.slice(0,4)+"."+k.slice(4,6)+"."+k.slice(6);
   let h = '<div class="sh"><h2>주도 이후 성과</h2><button class="x" id="xb">닫기</button></div>';
-  h += '<p class="summ" style="margin-top:8px">급등한 다음 날 <b>시가</b>에 샀다면 N거래일 뒤 종가까지 <b>지수보다</b> 얼마나 더(덜) 올랐나. 날짜별 평균을 다시 평균 낸 값.</p>';
+  h += '<p class="summ" style="margin-top:8px">급등한 다음 날 <b>시가</b>에 샀다면 N거래일 뒤 종가까지 <b>지수보다</b> 얼마나 더(덜) 올랐나. 큰 숫자는 날짜별 평균의 평균, 옆의 %p는 <b>기준선</b>과의 차이.</p>';
+  const B = S.groups.base || {};
+  const f1 = v => { const r = Math.round(v*10)/10; return r===0 ? "0.0" : (r>0?"+":"")+r.toFixed(1); };
   const sec = (title, gs) => { h += '<div class="sec">'+title+'</div>'; gs.forEach(g=>{
     const G = S.groups[g]; if (!G) return;
-    h += '<div class="sg"><h3>'+nm[g]+'</h3>';
+    h += '<div class="sg'+(g==="base"?" base":"")+'"><h3>'+nm[g]+'</h3>'+
+         (g==="base"?'<div class="sub">시총 상위 1,200 보통주 중 무작위 400종목을 매일 샀다면. 아래 숫자들은 이 줄과 비교해서 읽는다</div>':'');
     ["1","5","20"].forEach(k=>{ const v=G[k]; if (!v) return;
-      h += '<div class="sr"><span>'+k+'일 뒤</span><span><span class="m '+(v.mean>=0?"u":"d")+'">'+(v.mean>0?"+":"")+v.mean.toFixed(1)+'%</span>'+
-           '<small>지수 이긴 날 '+v.win+'% · 날짜 '+v.days+'개 · '+v.n+'종목</small></span></div>'; });
+      const b = B[k], d = (g!=="base" && b) ? v.mean-b.mean : null;
+      h += '<div class="sr"><span>'+k+'일 뒤</span><span class="rv"><span class="m '+(v.mean>=0?"u":"d")+'">'+f1(v.mean)+'%</span>'+
+           (d!==null?'<span class="dl '+(d>=0?"u":"d")+'">기준선 '+f1(d)+'%p</span>':'')+
+           '<small>중앙값 '+(v.med!=null?f1(v.med)+'%':'-')+' · 지수 이긴 종목 '+(v.pwin!=null?v.pwin:'-')+'%'+
+           (g!=="base"&&b&&b.pwin!=null?' (기준선 '+b.pwin+'%)':'')+' · '+v.n.toLocaleString()+'건</small></span></div>'; });
     h += '</div>';
   }); };
+  sec("비교선", ["base"]);
   sec("주도 며칠째인가", ["lead1","lead2","other"]);
   sec("찐 주도주 필터 · 테마 확산도 70% 기준", ["king","solo","fol_hi","fol_lo"]);
   h += '<div class="disc">기간 '+f(S.from)+'~'+f(S.to)+' · 매일 자동 갱신. 표본이 작고 한 시장 국면뿐이라 예비 숫자입니다. 수수료·세금·체결 미끄러짐은 빠져 있습니다.</div>';
