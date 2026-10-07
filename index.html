@@ -121,6 +121,9 @@ h1 span{color:var(--muted)}
 .life{display:inline-block;font-size:10.5px;font-weight:700;border-radius:4px;padding:0 5px;margin-left:6px;vertical-align:2px;color:var(--muted);border:1px solid var(--line2)}
 .life.new{color:var(--gold);border-color:var(--gold)}
 .cool{font-size:13px;color:var(--muted);margin-top:12px}
+.kd{font-size:12.5px;color:var(--muted);margin:14px 0 2px;font-weight:700}
+.kpill{display:inline-block;border:1px solid var(--line2);border-radius:999px;padding:4px 11px;margin:0 6px 6px 0;font-size:13px;cursor:pointer;background:var(--card);color:var(--ink)}
+.kpill.on{background:var(--navy);color:var(--card);border-color:var(--navy)}
 .statbtn{margin-left:auto;border:1px solid var(--navy);background:var(--card);color:var(--navy);border-radius:999px;padding:7px 14px;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
 .sg{background:var(--chip);border-radius:10px;padding:12px;margin-top:8px}
 .sg h3{margin:0 0 6px;font-size:15px}
@@ -250,9 +253,10 @@ function renderMonths(y){
     const m = y+"-"+String(i).padStart(2,"0"), has = IDX.months.includes(m) || IPOM.has(m);
     h += '<button class="mbtn'+(m===cur?" on":"")+(has?" has":"")+'" '+(has?'':'disabled')+' data-m="'+m+'">'+i+'월</button>';
   }
-  h += '<button class="statbtn" id="statb">통계</button>';
+  h += '<button class="statbtn" id="kingb">👑 모아보기</button><button class="statbtn" id="statb" style="margin-left:6px">통계</button>';
   $("#months").innerHTML = h;
   $("#statb").onclick = openStats;
+  $("#kingb").onclick = ()=>openKings(cur);
   document.querySelectorAll(".mbtn[data-m]").forEach(b=>b.onclick=()=>render(b.dataset.m));
   $("#ysel").onchange = e => { const ms = IDX.months.filter(m=>m.startsWith(e.target.value)); if (ms.length) render(ms[ms.length-1]); };
 }
@@ -341,6 +345,37 @@ async function loadIpo(){
     });
   }catch(err){}
 }
+async function openKings(m){
+  const md = await month(m); if (!md) return;
+  const [y, mo] = m.split("-").map(Number);
+  const rows = [];
+  md.days.slice().sort((a,b)=>b.d.localeCompare(a.d)).forEach(day=>{
+    day.themes.forEach(t=> t.stocks.forEach(s=>{ if (s.tag==="king") rows.push({day, t, s}); }));
+  });
+  const cnt = {}; rows.forEach(r=> cnt[r.s.n]=(cnt[r.s.n]||0)+1);
+  const rep = Object.entries(cnt).filter(([,c])=>c>1).sort((a,b)=>b[1]-a[1]);
+  let h = '<div class="sh"><h2>👑 '+mo+'월 찐 대장</h2><button class="x" id="xb">닫기</button></div>';
+  h += '<div style="margin:10px 0 4px">'+IDX.months.map(x=>'<span class="kpill'+(x===m?' on':'')+'" data-m="'+x+'">'+(+x.slice(5))+'월</span>').join("")+'</div>';
+  h += '<p class="summ">테마 전체가 같이 오른 날(확산 70%↑) 그 테마의 거래대금 1위. 이 달 <b>'+rows.length+'건</b>'+
+       (rep.length?' · 여러 번: '+rep.slice(0,6).map(([n,c])=>esc(n)+' '+c+'회').join(', '):'')+'</p>';
+  let last = "";
+  rows.forEach(({day,t,s})=>{
+    if (day.d!==last){ const dt=new Date(+day.d.slice(0,4),+day.d.slice(4,6)-1,+day.d.slice(6));
+      h += '<div class="kd">'+(dt.getMonth()+1)+'/'+dt.getDate()+' ('+WD[dt.getDay()]+') · 코스닥 '+pct(day.kosdaq)+'</div>'; last=day.d; }
+    const br = t.br ? ' · 확산 '+Math.round(t.br[0]/t.br[1]*100)+'%' : '';
+    h += '<div class="st" data-d="'+day.d+'" style="cursor:pointer"><div class="st1"><div><span class="sn">'+esc(s.n)+'</span>'+
+         '<span class="vv'+(s.val>=1000?' big':'')+'">'+(s.val>=1000?'🔥':'')+won(s.val)+'</span></div>'+
+         '<div class="pr"><span class="u">'+pct(s.chg,1)+'</span></div></div>'+
+         '<div class="why"><b style="color:var(--lead)">'+esc(t.name)+'</b>'+br+(s.why?' · '+esc(s.why):'')+'</div></div>';
+  });
+  if (!rows.length) h += '<div class="why">이 달은 찐 대장 기록이 없습니다.</div>';
+  h += '<div class="disc">카드를 누르면 그날 상세로 이동합니다. 확산도는 테마 구성종목 중 오른 종목 비율이며 소급 기간은 지금 테마 구성 기준 근사치입니다.</div>';
+  $("#sheet").innerHTML = h; $("#sheet").style.display="block"; $("#ov").style.display="block"; $("#sheet").scrollTop=0;
+  document.body.style.overflow="hidden";
+  $("#xb").onclick = closeDay;
+  document.querySelectorAll(".kpill").forEach(p=>p.onclick=()=>openKings(p.dataset.m));
+  document.querySelectorAll(".st[data-d]").forEach(c=>c.onclick=()=>{ const day=md.days.find(x=>x.d===c.dataset.d); if (day) openDay(day); });
+}
 async function openStats(){
   let S; try{ S = await fetch("data/stats.json?t="+Date.now()).then(r=>r.json()); }catch(e){ return; }
   const nm = {lead1:"주도 1일차 종목", lead2:"주도 2일째+ 종목", other:"비교군 · 주도 아닌 급등주",
@@ -405,6 +440,7 @@ document.addEventListener("click", e=>{ if (!e.target.closest(".search")) $("#su
   await render(hm && IDX.months.includes(hm) ? hm : IDX.months[IDX.months.length-1]);
   if (hd){ const md = await month(hm); const day = md && md.days.find(x=>x.d===hd); if (day) openDay(day); }
   if (location.hash==="#stats") openStats();
+  if (location.hash==="#kings") openKings(cur);
 })();
 </script>
 </body>
