@@ -10,19 +10,19 @@
 :root{
   --bg:#f4f5f9; --card:#fff; --ink:#1c2033; --muted:#80879a; --line:#e3e6ee; --line2:#cfd4df;
   --lead:#b8213a; --lead-bg:#fdecef; --nxt:#6a43c4; --nxt-bg:#efe9fb; --up:#c8233b; --down:#2a62c9;
-  --navy:#1f2340; --gold:#b8862b; --today:#fff6d6; --chip:#f1f2f6; --hit:#ffe08a;
+  --navy:#1f2340; --gold:#b8862b; --today:#fff6d6; --chip:#f1f2f6; --hit:#ffe08a; --ipo:#13795b; --ipo-bg:#e3f5ee;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#11131b; --card:#1a1d28; --ink:#e7e9f0; --muted:#8b91a3; --line:#2a2e3c; --line2:#373c4d;
     --lead:#ff6b81; --lead-bg:#3a1d25; --nxt:#b49cff; --nxt-bg:#2a2240; --up:#ff6b81; --down:#6ea2ff;
-    --navy:#c9cdf2; --gold:#e0b25c; --today:#3a3320; --chip:#252938; --hit:#6b5a1c;
+    --navy:#c9cdf2; --gold:#e0b25c; --today:#3a3320; --chip:#252938; --hit:#6b5a1c; --ipo:#4fd1a5; --ipo-bg:#173a30;
   }
 }
 :root[data-theme="dark"]{
   --bg:#11131b; --card:#1a1d28; --ink:#e7e9f0; --muted:#8b91a3; --line:#2a2e3c; --line2:#373c4d;
   --lead:#ff6b81; --lead-bg:#3a1d25; --nxt:#b49cff; --nxt-bg:#2a2240; --up:#ff6b81; --down:#6ea2ff;
-  --navy:#c9cdf2; --gold:#e0b25c; --today:#3a3320; --chip:#252938; --hit:#6b5a1c;
+  --navy:#c9cdf2; --gold:#e0b25c; --today:#3a3320; --chip:#252938; --hit:#6b5a1c; --ipo:#4fd1a5; --ipo-bg:#173a30;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);
@@ -79,6 +79,10 @@ h1 span{color:var(--muted)}
 .nx{display:block;font-size:11.5px;color:var(--nxt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .nx em{font-style:normal;font-size:10px;background:var(--nxt-bg);padding:0 4px;border-radius:3px;margin-right:4px;font-weight:700}
 .hol{color:var(--muted);font-size:12.5px;margin-top:6px}
+.ipo{display:block;font-size:11.5px;color:var(--ipo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.ipo em{font-style:normal;font-size:10px;background:var(--ipo-bg);padding:0 4px;border-radius:3px;margin-right:4px;font-weight:700}
+.ipobox{background:var(--ipo-bg);border-radius:10px;padding:10px 12px;margin-top:7px;font-size:13.5px;line-height:1.6}
+.ipobox b{color:var(--ipo)}
 .foot{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7}
 /* 모달 */
 .ov{position:fixed;inset:0;background:rgba(10,12,20,.45);display:none;z-index:50}
@@ -122,7 +126,7 @@ h1 span{color:var(--muted)}
   .t{font-size:11px;line-height:1.35;white-space:normal;word-break:keep-all;overflow-wrap:anywhere;margin-bottom:2px}
   .q{display:none}
   .dn{font-size:12px}
-  .nx,.more{font-size:10px}
+  .nx,.more,.ipo{font-size:10px}
   .hd div{font-size:10.5px;letter-spacing:.05em}
   .sheet{top:auto;bottom:0;transform:translateX(-50%);width:100%;border-radius:18px 18px 0 0;max-height:88vh;padding:18px 14px 22px}
 }
@@ -143,6 +147,7 @@ h1 span{color:var(--muted)}
     <span><i style="background:var(--lead)"></i>본장 주도 테마</span>
     <span><i style="background:var(--ink)"></i>기타 테마</span>
     <span><i style="background:var(--nxt)"></i>넥장(장후) 강세</span>
+    <span><i style="background:var(--ipo)"></i>공모주 일정</span>
     <span>날짜를 누르면 주도주가 나옵니다</span>
   </div>
   <div class="cal" id="cal"></div>
@@ -155,7 +160,7 @@ h1 span{color:var(--muted)}
 const $ = s => document.querySelector(s);
 const WD = ["일","월","화","수","목","금","토"];
 const cache = {};
-let IDX = null, cur = null, hits = new Set(), hitLabel = "";
+let IDX = null, cur = null, hits = new Set(), hitLabel = "", IPO = {}, IPOM = new Set();
 
 const pct = (v, dg=2) => (v>0?"+":"") + v.toFixed(dg) + "%";
 const ymd = d => d.getFullYear() + String(d.getMonth()+1).padStart(2,"0") + String(d.getDate()).padStart(2,"0");
@@ -201,9 +206,11 @@ async function render(m){
         if (oth.length>1) inner += '<div class="more">외 '+(oth.length-1)+'개</div>';
         if (!day.themes.length) inner += '<div class="hol">급등 종목 없음</div>';
         nxtThemes(day).slice(0,2).forEach(n=> inner += '<span class="nx"><em>장후</em>'+esc(n)+'</span>');
-      } else if (k < lastData && k < today && !out){
+      } else if (k < lastData && k < today && !out && !IPO[k]){
         inner += '<div class="hol">휴장</div>';
       }
+      (IPO[k]||[]).forEach(x=> inner += '<span class="ipo"><em>'+x.k+'</em>'+esc(x.e.name)+'</span>');
+      if (!day && IPO[k]) cls = cls.replace(" empty","");
       h += '<div class="'+cls+'" data-d="'+k+'">'+inner+'</div>';
     }
     if (wd === 5) h += '</div>';
@@ -211,7 +218,7 @@ async function render(m){
   }
   $("#cal").innerHTML = h;
   document.querySelectorAll(".cell[data-d]").forEach(c=>{
-    const k=c.dataset.d; if (map[k]) c.onclick=()=>openDay(map[k]);
+    const k=c.dataset.d; if (map[k]) c.onclick=()=>openDay(map[k]); else if (IPO[k]) c.onclick=()=>openIpo(k);
   });
   const n = Object.keys(map).filter(k=>k.startsWith(m.replace("-",""))).length;
   const r = IDX.rule;
@@ -225,7 +232,7 @@ function renderMonths(y){
   const ys = [...new Set(IDX.months.map(m=>+m.slice(0,4)))];
   let h = '<select id="ysel">'+ys.map(v=>'<option'+(v===y?' selected':'')+'>'+v+'</option>').join("")+'</select>';
   for (let i=1;i<=12;i++){
-    const m = y+"-"+String(i).padStart(2,"0"), has = IDX.months.includes(m);
+    const m = y+"-"+String(i).padStart(2,"0"), has = IDX.months.includes(m) || IPOM.has(m);
     h += '<button class="mbtn'+(m===cur?" on":"")+(has?" has":"")+'" '+(has?'':'disabled')+' data-m="'+m+'">'+i+'월</button>';
   }
   $("#months").innerHTML = h;
@@ -248,6 +255,7 @@ function openDay(day){
   h += '<div class="idx">코스피 <b class="'+(day.kospi>=0?"u":"d")+'">'+pct(day.kospi)+'</b> &nbsp; 코스닥 <b>'+pct(day.kosdaq)+'</b></div>';
   h += '<p class="summ">'+esc(day.summary)+'</p>';
   h += '<div class="meta">KRX 정규장 급등 '+day.n+'종목 분석'+(day.src==="backfill"?'<span class="tag">소급</span>':'')+'</div>';
+  h += ipoHtml(day.d);
   h += '<div class="sec">본장 테마</div>';
   day.themes.forEach((t,i)=>{
     h += '<div class="th'+(i===0?" open":"")+'"><div class="thh"><div><span class="thn'+(t.lead?" l":"")+'">'+esc(t.name)+'</span>'+
@@ -279,6 +287,34 @@ function openDay(day){
   $("#xb").onclick = closeDay;
   document.querySelectorAll(".thh").forEach(x=>x.onclick=()=>x.parentElement.classList.toggle("open"));
   document.querySelectorAll(".restb").forEach(b=>b.onclick=()=>{ b.previousElementSibling.style.display="block"; b.remove(); });
+}
+function ipoHtml(k){
+  const xs = IPO[k]; if (!xs) return "";
+  return '<div class="sec" style="color:var(--ipo)">공모주 일정</div>' + xs.map(x=>{
+    const e=x.e, f=a=>a?(+a[0].slice(4,6))+'/'+(+a[0].slice(6))+(a[1]&&a[1]!==a[0]?'~'+(+a[1].slice(4,6))+'/'+(+a[1].slice(6)):''):'-';
+    return '<div class="ipobox"><b>'+x.k+'</b> · <b>'+esc(e.name)+'</b><br>청약 '+f(e.sub)+' · 환불 '+f(e.refund)+' · 상장 '+f(e.list)+
+      '<br>공모가 '+(e.price?esc(e.price)+'원':'미확정 ('+esc(e.band)+')')+(e.broker?' · '+esc(e.broker):'')+(e.comp?' · 경쟁률 '+esc(e.comp):'')+
+      '<br><a href="'+esc(e.url)+'" target="_blank" rel="noopener" style="color:var(--muted)">38커뮤니케이션 상세</a></div>';
+  }).join("");
+}
+function openIpo(k){
+  const dt = new Date(+k.slice(0,4), +k.slice(4,6)-1, +k.slice(6));
+  let h = '<div class="sh"><h2>'+(dt.getMonth()+1)+'월 '+dt.getDate()+'일 ('+WD[dt.getDay()]+')</h2><button class="x" id="xb">닫기</button></div>';
+  h += ipoHtml(k) + '<div class="disc">공모주 일정은 38커뮤니케이션 상세 페이지 기준이며 매일 16시 30분 무렵 다시 확인합니다. 청약 마감 시각은 증권사 공지를 확인하세요.</div>';
+  $("#sheet").innerHTML = h; $("#sheet").style.display="block"; $("#ov").style.display="block"; document.body.style.overflow="hidden";
+  $("#xb").onclick = closeDay;
+}
+async function loadIpo(){
+  try{
+    const j = await fetch("data/ipo.json?t="+Date.now()).then(r=>r.ok?r.json():{items:[]});
+    const add=(k,kind,e)=>{ (IPO[k]=IPO[k]||[]).push({k:kind,e}); IPOM.add(k.slice(0,4)+"-"+k.slice(4,6)); };
+    j.items.forEach(e=>{
+      if (e.sub){ const a=new Date(+e.sub[0].slice(0,4),+e.sub[0].slice(4,6)-1,+e.sub[0].slice(6)), b=e.sub[1];
+        for (let d=new Date(a); ymd(d)<=b; d.setDate(d.getDate()+1)) if (d.getDay()>0&&d.getDay()<6) add(ymd(d),"청약",e); }
+      if (e.refund) add(e.refund[0],"환불",e);
+      if (e.list) add(e.list[0],"상장",e);
+    });
+  }catch(err){}
 }
 function closeDay(){ $("#sheet").style.display="none"; $("#ov").style.display="none"; document.body.style.overflow=""; }
 $("#ov").onclick = closeDay;
@@ -316,6 +352,7 @@ document.addEventListener("click", e=>{ if (!e.target.closest(".search")) $("#su
 
 (async()=>{
   IDX = await fetch("data/index.json?t="+Date.now()).then(r=>r.json());
+  await loadIpo();
   const hd = (location.hash.match(/d=(\d{8})/)||[])[1];       // 공유용 딥링크 #d=20261001
   const hm = hd && hd.slice(0,4)+"-"+hd.slice(4,6);
   await render(hm && IDX.months.includes(hm) ? hm : IDX.months[IDX.months.length-1]);
