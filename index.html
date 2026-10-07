@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>테마주 달력</title>
+<meta name="description" content="국내장 날짜별 주도 테마·주도주 아카이브">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+:root{
+  --bg:#f4f5f9; --card:#fff; --ink:#1c2033; --muted:#80879a; --line:#e3e6ee; --line2:#cfd4df;
+  --lead:#b8213a; --lead-bg:#fdecef; --nxt:#6a43c4; --nxt-bg:#efe9fb; --up:#c8233b; --down:#2a62c9;
+  --navy:#1f2340; --gold:#b8862b; --today:#fff6d6; --chip:#f1f2f6; --hit:#ffe08a;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11131b; --card:#1a1d28; --ink:#e7e9f0; --muted:#8b91a3; --line:#2a2e3c; --line2:#373c4d;
+    --lead:#ff6b81; --lead-bg:#3a1d25; --nxt:#b49cff; --nxt-bg:#2a2240; --up:#ff6b81; --down:#6ea2ff;
+    --navy:#c9cdf2; --gold:#e0b25c; --today:#3a3320; --chip:#252938; --hit:#6b5a1c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11131b; --card:#1a1d28; --ink:#e7e9f0; --muted:#8b91a3; --line:#2a2e3c; --line2:#373c4d;
+  --lead:#ff6b81; --lead-bg:#3a1d25; --nxt:#b49cff; --nxt-bg:#2a2240; --up:#ff6b81; --down:#6ea2ff;
+  --navy:#c9cdf2; --gold:#e0b25c; --today:#3a3320; --chip:#252938; --hit:#6b5a1c;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Pretendard Variable",Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  -webkit-text-size-adjust:100%}
+a{color:inherit}
+.wrap{max-width:1080px;margin:0 auto;padding:24px 16px 48px}
+.ym{color:var(--gold);font-weight:700;font-size:14px;letter-spacing:.02em}
+h1{margin:4px 0 14px;font-size:34px;font-weight:900;letter-spacing:-.02em;color:var(--navy)}
+h1 span{color:var(--muted)}
+.rule{height:2px;background:var(--navy);opacity:.85;margin-bottom:14px}
+.search{position:relative}
+.search input{width:100%;padding:13px 14px;border:1px solid var(--line2);border-radius:10px;background:var(--card);
+  color:var(--ink);font:inherit;font-size:15px;outline:none}
+.search input:focus{border-color:var(--navy)}
+.sugg{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:var(--card);border:1px solid var(--line2);
+  border-radius:10px;z-index:20;max-height:320px;overflow:auto;display:none;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.sugg div{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:8px;font-size:14px}
+.sugg div:hover,.sugg div.on{background:var(--chip)}
+.sugg small{color:var(--muted)}
+.hitbar{margin-top:8px;font-size:13px;color:var(--muted);display:none;line-height:1.9}
+.hitbar b{color:var(--ink)}
+.hitbar a{display:inline-block;margin:0 6px 0 0;padding:1px 8px;border-radius:999px;background:var(--chip);
+  text-decoration:none;color:var(--ink);cursor:pointer}
+.months{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:18px 0 10px}
+.months select{padding:8px 10px;border-radius:8px;border:1px solid var(--line2);background:var(--card);color:var(--ink);font:inherit}
+.mbtn{position:relative;border:1px solid var(--line2);background:var(--card);color:var(--ink);border-radius:999px;
+  padding:7px 14px;font:inherit;font-size:14px;cursor:pointer}
+.mbtn[disabled]{opacity:.35;cursor:default}
+.mbtn.on{background:var(--navy);color:var(--card);border-color:var(--navy);font-weight:700}
+.mbtn.has::after{content:"";position:absolute;top:2px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--lead)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:6px 0 10px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.cal{border-top:2px solid var(--navy);background:var(--card);border-left:1px solid var(--line);}
+.row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+.hd div{padding:10px 0;text-align:center;font-size:12px;letter-spacing:.12em;color:var(--muted);
+  border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg)}
+.cell{min-height:118px;padding:7px 8px 8px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+  cursor:pointer;overflow:hidden;min-width:0}
+.cell:hover{background:var(--chip)}
+.cell.out .dn{color:var(--muted)}
+.cell.out{opacity:.72}
+.cell.today{background:var(--today)}
+.cell.hit{box-shadow:inset 0 0 0 2px var(--gold)}
+.cell.empty{cursor:default}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:4px}
+.dn{font-size:13px;font-weight:600}
+.q{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--muted);white-space:nowrap}
+.q.u{color:var(--up)} .q.d{color:var(--down)}
+.t{font-size:13px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t.l{color:var(--lead);font-weight:700}
+.t.o{color:var(--ink)}
+.more{font-size:11px;color:var(--muted);margin-top:2px}
+.nx{display:block;font-size:11.5px;color:var(--nxt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.nx em{font-style:normal;font-size:10px;background:var(--nxt-bg);padding:0 4px;border-radius:3px;margin-right:4px;font-weight:700}
+.hol{color:var(--muted);font-size:12.5px;margin-top:6px}
+.foot{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7}
+/* 모달 */
+.ov{position:fixed;inset:0;background:rgba(10,12,20,.45);display:none;z-index:50}
+.sheet{position:fixed;left:50%;top:4vh;transform:translateX(-50%);width:min(680px,100% - 24px);max-height:92vh;overflow:auto;
+  background:var(--card);border-radius:18px;padding:22px 20px 24px;display:none;z-index:60;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.sh{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.sh h2{margin:0;font-size:22px;font-weight:800}
+.x{border:1px solid var(--line2);background:var(--card);color:var(--ink);border-radius:10px;padding:7px 12px;font:inherit;cursor:pointer}
+.idx{margin:6px 0 10px;font-size:14px;color:var(--muted)}
+.idx b{font-weight:600}
+.summ{font-size:15px;line-height:1.6;margin:0 0 4px}
+.meta{font-size:13px;color:var(--muted);margin-bottom:14px}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);margin-left:6px;vertical-align:1px}
+.sec{font-size:13px;font-weight:700;color:var(--muted);margin:18px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.th{border-bottom:1px solid var(--line)}
+.thh{display:flex;justify-content:space-between;align-items:center;padding:12px 2px;cursor:pointer;gap:8px}
+.thn{font-size:16px;font-weight:800}
+.thn.l{color:var(--lead)}
+.badge{display:inline-block;font-size:11px;font-weight:700;color:var(--lead);border:1.5px solid var(--lead);border-radius:999px;padding:1px 7px;margin-left:8px;vertical-align:2px}
+.cnt{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.tb{display:none;padding:0 0 12px}
+.th.open .tb{display:block}
+.info{background:var(--lead-bg);border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:8px}
+.info b{color:var(--lead);font-size:16px}
+.st{background:var(--chip);border-radius:10px;padding:11px 12px;margin-top:7px}
+.st1{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.sn{font-weight:700;font-size:15px}
+.co{font-size:11px;font-weight:600;color:var(--muted);border:1px solid var(--line2);border-radius:4px;padding:0 5px;margin-left:6px;vertical-align:1px}
+.pr{text-align:right;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;white-space:nowrap;line-height:1.5}
+.pr .k{font-family:inherit;color:var(--muted);font-size:11.5px;margin-right:4px}
+.pr .u{color:var(--up);font-weight:700} .pr .d{color:var(--down);font-weight:700}
+.pr small{color:var(--muted)}
+.why{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.5}
+.why a{text-decoration:none;color:var(--muted)} .why a:hover{text-decoration:underline}
+.src a{display:block;font-size:13px;color:var(--muted);margin:5px 0;line-height:1.45}
+.disc{font-size:12px;color:var(--muted);margin-top:16px;line-height:1.6}
+@media (max-width:640px){
+  .wrap{padding:16px 10px 40px}
+  h1{font-size:26px}
+  .cell{min-height:96px;padding:5px 4px}
+  .t{font-size:11px;line-height:1.35;white-space:normal;word-break:keep-all;overflow-wrap:anywhere;margin-bottom:2px}
+  .q{display:none}
+  .dn{font-size:12px}
+  .nx,.more{font-size:10px}
+  .hd div{font-size:10.5px;letter-spacing:.05em}
+  .sheet{top:auto;bottom:0;transform:translateX(-50%);width:100%;border-radius:18px 18px 0 0;max-height:88vh;padding:18px 14px 22px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ym" id="ym"></div>
+  <h1>주식 테마주 <span>달력</span></h1>
+  <div class="rule"></div>
+  <div class="search">
+    <input id="q" placeholder="테마·종목 검색 (예: 원익IPS, 로봇)" autocomplete="off">
+    <div class="sugg" id="sugg"></div>
+  </div>
+  <div class="hitbar" id="hitbar"></div>
+  <div class="months" id="months"></div>
+  <div class="legend">
+    <span><i style="background:var(--lead)"></i>본장 주도 테마</span>
+    <span><i style="background:var(--ink)"></i>기타 테마</span>
+    <span><i style="background:var(--nxt)"></i>넥장(장후) 강세</span>
+    <span>날짜를 누르면 주도주가 나옵니다</span>
+  </div>
+  <div class="cal" id="cal"></div>
+  <div class="foot" id="foot"></div>
+</div>
+<div class="ov" id="ov"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const WD = ["일","월","화","수","목","금","토"];
+const cache = {};
+let IDX = null, cur = null, hits = new Set(), hitLabel = "";
+
+const pct = (v, dg=2) => (v>0?"+":"") + v.toFixed(dg) + "%";
+const ymd = d => d.getFullYear() + String(d.getMonth()+1).padStart(2,"0") + String(d.getDate()).padStart(2,"0");
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function month(m){
+  if (!IDX.months.includes(m)) return null;
+  if (!cache[m]) cache[m] = fetch("data/"+m+".json?v="+encodeURIComponent(IDX.updated)).then(r=>r.json());
+  return cache[m];
+}
+function dayMap(...ms){ const o={}; ms.forEach(m=>m&&m.days.forEach(d=>o[d.d]=d)); return o; }
+function nxtThemes(day){
+  return day.themes.filter(t=>!t.etc && t.stocks.filter(s=>s.nxe!=null && s.nxe>=3).length>=2).map(t=>t.name);
+}
+
+async function render(m){
+  cur = m;
+  const [y, mo] = m.split("-").map(Number);
+  $("#ym").textContent = y+"년 "+mo+"월";
+  renderMonths(y);
+  const prev = new Date(y, mo-2, 1), next = new Date(y, mo, 1);
+  const pm = prev.getFullYear()+"-"+String(prev.getMonth()+1).padStart(2,"0");
+  const nm = next.getFullYear()+"-"+String(next.getMonth()+1).padStart(2,"0");
+  const map = dayMap(await month(m), await month(pm), await month(nm));
+  const first = new Date(y, mo-1, 1), last = new Date(y, mo, 0);
+  const start = new Date(first); start.setDate(first.getDate() - ((first.getDay()+6)%7));
+  const lastData = Object.keys(map).sort().pop() || "";
+  const today = ymd(new Date());
+  let h = '<div class="row hd"><div>MON</div><div>TUE</div><div>WED</div><div>THU</div><div>FRI</div></div>';
+  for (let d = new Date(start); d <= last || d.getDay() !== 1; d.setDate(d.getDate()+1)){
+    const wd = d.getDay();
+    if (wd === 1) h += '<div class="row">';
+    if (wd >= 1 && wd <= 5){
+      const k = ymd(d), day = map[k], out = d.getMonth() !== mo-1;
+      let cls = "cell" + (out?" out":"") + (k===today?" today":"") + (hits.has(k)?" hit":"") + (day?"":" empty");
+      let inner = '<div class="top"><span class="dn">'+d.getDate()+'</span>';
+      if (day) inner += '<span class="q '+(day.kosdaq>=0?"u":"d")+'">Q '+pct(day.kosdaq)+'</span>';
+      inner += '</div>';
+      if (day){
+        const lead = day.themes.filter(t=>t.lead), oth = day.themes.filter(t=>!t.lead);
+        lead.forEach(t=> inner += '<div class="t l">'+esc(t.name)+'</div>');
+        if (oth.length) inner += '<div class="t o">'+esc(oth[0].name)+'</div>';
+        if (oth.length>1) inner += '<div class="more">외 '+(oth.length-1)+'개</div>';
+        if (!day.themes.length) inner += '<div class="hol">급등 종목 없음</div>';
+        nxtThemes(day).slice(0,2).forEach(n=> inner += '<span class="nx"><em>장후</em>'+esc(n)+'</span>');
+      } else if (k < lastData && k < today && !out){
+        inner += '<div class="hol">휴장</div>';
+      }
+      h += '<div class="'+cls+'" data-d="'+k+'">'+inner+'</div>';
+    }
+    if (wd === 5) h += '</div>';
+    if (wd === 0 && d > last) break;
+  }
+  $("#cal").innerHTML = h;
+  document.querySelectorAll(".cell[data-d]").forEach(c=>{
+    const k=c.dataset.d; if (map[k]) c.onclick=()=>openDay(map[k]);
+  });
+  const n = Object.keys(map).filter(k=>k.startsWith(m.replace("-",""))).length;
+  const r = IDX.rule;
+  $("#foot").innerHTML = "이 달 기록 "+n+"거래일 · 평일 16시 30분(본장), 20시 40분(넥장) 무렵 자동 갱신 · 마지막 갱신 "+esc(IDX.updated)+
+    "<br>급등 기준: 정규장 +"+r.chg+"% 이상 · 거래대금 "+r.val+"억 이상. 주도 테마 = 급등 종목 "+r.lead_min+"개 이상 몰린 상위 3개"+
+    (IDX.backfill_until ? "<br>"+fmtD(IDX.backfill_until)+"까지는 소급 기록(테마 구성은 2026-10 기준이라 근사치, 넥장 없음)" : "");
+}
+function fmtD(k){ return k.slice(0,4)+"-"+k.slice(4,6)+"-"+k.slice(6); }
+
+function renderMonths(y){
+  const ys = [...new Set(IDX.months.map(m=>+m.slice(0,4)))];
+  let h = '<select id="ysel">'+ys.map(v=>'<option'+(v===y?' selected':'')+'>'+v+'</option>').join("")+'</select>';
+  for (let i=1;i<=12;i++){
+    const m = y+"-"+String(i).padStart(2,"0"), has = IDX.months.includes(m);
+    h += '<button class="mbtn'+(m===cur?" on":"")+(has?" has":"")+'" '+(has?'':'disabled')+' data-m="'+m+'">'+i+'월</button>';
+  }
+  $("#months").innerHTML = h;
+  document.querySelectorAll(".mbtn[data-m]").forEach(b=>b.onclick=()=>render(b.dataset.m));
+  $("#ysel").onchange = e => { const ms = IDX.months.filter(m=>m.startsWith(e.target.value)); if (ms.length) render(ms[ms.length-1]); };
+}
+
+function stockRow(s, tn){
+  const pr = '<span class="k">본장</span><span class="'+(s.chg>=0?"u":"d")+'">'+pct(s.chg,1)+'</span>' +
+    (s.nx!=null ? '<br><span class="k">넥장</span><span class="'+(s.nx>=0?"u":"d")+'">'+pct(s.nx,1)+'</span> <small>('+pct(s.nxe,1)+')</small>' : '');
+  const why = s.why ? '<div class="why"><a href="'+esc(s.u)+'" target="_blank" rel="noopener">'+esc(s.why)+'</a> · '+esc(s.o)+'</div>'
+                    : '<div class="why">그날 종목 기사 없음'+(tn && tn!=="기타(개별)" ? ' · '+esc(tn)+' 동반 강세' : '')+'</div>';
+  return '<div class="st"><div class="st1"><div><span class="sn">'+esc(s.n)+'</span>'+(s.co?'<span class="co">동반</span>':'')+
+    '</div><div class="pr">'+pr+'</div></div>'+why+'</div>';
+}
+
+function openDay(day){
+  const dt = new Date(+day.d.slice(0,4), +day.d.slice(4,6)-1, +day.d.slice(6));
+  let h = '<div class="sh"><h2>'+(dt.getMonth()+1)+'월 '+dt.getDate()+'일 ('+WD[dt.getDay()]+')</h2><button class="x" id="xb">닫기</button></div>';
+  h += '<div class="idx">코스피 <b class="'+(day.kospi>=0?"u":"d")+'">'+pct(day.kospi)+'</b> &nbsp; 코스닥 <b>'+pct(day.kosdaq)+'</b></div>';
+  h += '<p class="summ">'+esc(day.summary)+'</p>';
+  h += '<div class="meta">KRX 정규장 급등 '+day.n+'종목 분석'+(day.src==="backfill"?'<span class="tag">소급</span>':'')+'</div>';
+  h += '<div class="sec">본장 테마</div>';
+  day.themes.forEach((t,i)=>{
+    h += '<div class="th'+(i===0?" open":"")+'"><div class="thh"><div><span class="thn'+(t.lead?" l":"")+'">'+esc(t.name)+'</span>'+
+      (t.lead3m>0?'<span class="badge">3개월 주도 '+t.lead3m+'회</span>':'')+'</div><span class="cnt">주도주 '+t.stocks.length+' ▾</span></div><div class="tb">';
+    if (!t.etc) h += '<div class="info">최근 3개월 주도 테마 <b>'+t.lead3m+'</b>회 &nbsp; 테마 등장 '+t.seen3m+'회 &nbsp; 기록 '+day.win+'거래일 기준</div>';
+    t.stocks.slice(0,8).forEach(s=> h += stockRow(s, t.name));
+    if (t.stocks.length > 8){
+      h += '<div class="rest" style="display:none">'+t.stocks.slice(8).map(s=>stockRow(s, t.name)).join("")+'</div>'+
+           '<button class="x restb" style="margin-top:8px;width:100%">나머지 '+(t.stocks.length-8)+'종목 보기</button>';
+    }
+    h += '</div></div>';
+  });
+  const nx = day.themes.flatMap(t=>t.stocks.map(s=>({...s, tn:t.name}))).filter(s=>s.nxe!=null);
+  h += '<div class="sec" style="color:var(--nxt)">넥장 · 장후</div>';
+  if (!nx.length) h += '<div class="why">'+(day.src==="backfill"?"소급 기간이라 넥장 기록이 없습니다.":"아직 넥장 기록이 없습니다(20시 40분 무렵 갱신).")+'</div>';
+  else {
+    const strong = nx.filter(s=>s.nxe>=2).sort((a,b)=>b.nxe-a.nxe), weak = nx.filter(s=>s.nxe<=-3).sort((a,b)=>a.nxe-b.nxe);
+    if (!strong.length && !weak.length) h += '<div class="why">장후 특이 움직임이 적었습니다.</div>';
+    if (strong.length) h += '<div class="why"><b style="color:var(--nxt)">장후 추가 상승</b> · '+strong.slice(0,8).map(s=>esc(s.n)+' '+pct(s.nxe,1)).join(", ")+'</div>';
+    if (weak.length) h += '<div class="why"><b>장후 되밀림</b> · '+weak.slice(0,8).map(s=>esc(s.n)+' '+pct(s.nxe,1)).join(", ")+'</div>';
+  }
+  if (day.news.length){
+    h += '<div class="sec">출처</div><div class="src">'+day.news.map(n=>'<a href="'+esc(n.u)+'" target="_blank" rel="noopener">'+esc(n.t)+' · '+esc(n.o)+'</a>').join("")+'</div>';
+  }
+  h += '<div class="disc">네이버 증권 시세·뉴스를 바탕으로 자동 정리한 기록이며 투자 권유가 아닙니다. 주도 이유는 그날 기사 제목을 그대로 붙였고 «동반»은 종목명이 나온 기사가 없어 테마 동반 상승으로 본 종목입니다.</div>';
+  $("#sheet").innerHTML = h;
+  $("#sheet").style.display = "block"; $("#ov").style.display = "block"; $("#sheet").scrollTop = 0;
+  document.body.style.overflow = "hidden";
+  $("#xb").onclick = closeDay;
+  document.querySelectorAll(".thh").forEach(x=>x.onclick=()=>x.parentElement.classList.toggle("open"));
+  document.querySelectorAll(".restb").forEach(b=>b.onclick=()=>{ b.previousElementSibling.style.display="block"; b.remove(); });
+}
+function closeDay(){ $("#sheet").style.display="none"; $("#ov").style.display="none"; document.body.style.overflow=""; }
+$("#ov").onclick = closeDay;
+document.addEventListener("keydown", e=>{ if (e.key==="Escape") closeDay(); });
+
+// 검색
+function setHits(key){
+  const ds = IDX.search[key] || [];
+  hits = new Set(ds); hitLabel = key;
+  const bar = $("#hitbar");
+  if (!ds.length){ bar.style.display="none"; render(cur); return; }
+  bar.style.display = "block";
+  bar.innerHTML = '<b>'+esc(key)+'</b> 등장 '+ds.length+'일 · '+ds.slice().reverse().slice(0,40).map(d=>'<a data-d="'+d+'">'+(+d.slice(4,6))+'/'+(+d.slice(6))+'</a>').join("")+
+    ' <a id="clr">지우기</a>';
+  bar.querySelectorAll("a[data-d]").forEach(a=>a.onclick=async()=>{
+    const d=a.dataset.d, m=d.slice(0,4)+"-"+d.slice(4,6); await render(m);
+    const md = await month(m); const day = md.days.find(x=>x.d===d); if (day) openDay(day);
+  });
+  $("#clr").onclick = ()=>{ hits=new Set(); $("#q").value=""; bar.style.display="none"; render(cur); };
+  render(cur);
+}
+$("#q").addEventListener("input", e=>{
+  const v = e.target.value.trim().toLowerCase(), box = $("#sugg");
+  if (!v){ box.style.display="none"; return; }
+  const ks = Object.keys(IDX.search).filter(k=>k.toLowerCase().includes(v))
+    .sort((a,b)=>IDX.search[b].length-IDX.search[a].length).slice(0,12);
+  box.innerHTML = ks.map(k=>'<div data-k="'+esc(k)+'"><span>'+esc(k)+'</span><small>'+IDX.search[k].length+'일</small></div>').join("") || '<div><small>결과 없음</small></div>';
+  box.style.display = "block";
+  box.querySelectorAll("div[data-k]").forEach(x=>x.onclick=()=>{ $("#q").value=x.dataset.k; box.style.display="none"; setHits(x.dataset.k); });
+});
+$("#q").addEventListener("keydown", e=>{
+  if (e.key==="Enter"){ const f=$("#sugg div[data-k]"); if (f){ f.click(); } }
+});
+document.addEventListener("click", e=>{ if (!e.target.closest(".search")) $("#sugg").style.display="none"; });
+
+(async()=>{
+  IDX = await fetch("data/index.json?t="+Date.now()).then(r=>r.json());
+  const hd = (location.hash.match(/d=(\d{8})/)||[])[1];       // 공유용 딥링크 #d=20261001
+  const hm = hd && hd.slice(0,4)+"-"+hd.slice(4,6);
+  await render(hm && IDX.months.includes(hm) ? hm : IDX.months[IDX.months.length-1]);
+  if (hd){ const md = await month(hm); const day = md && md.days.find(x=>x.d===hd); if (day) openDay(day); }
+})();
+</script>
+</body>
+</html>
