@@ -30,6 +30,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
 from theme_keywords import keyword  # noqa: E402   (2026-10-07 굵은 40개 묶음 → 키워드 테마로 교체)
+import news_keywords as NK  # noqa: E402            (2026-10-07 뉴스 키워드 테마: 페스트 오분류 사건)
 import math
 
 # ── 설정 ─────────────────────────────────────────────
@@ -400,7 +401,7 @@ def gnews(name, d, prev_d, fetch=True):
     return out
 
 
-def best_search(items, name, d=None):
+def best_search(items, name, d=None, prefer=None):
     q = clean_name(name)
     best, bs = None, -99
     for it in items or []:
@@ -408,7 +409,8 @@ def best_search(items, name, d=None):
         if q not in t:
             continue
         s = (3 if "특징주" in t else 0) + min(3, len(WHY.findall(t))) + (1 if UPW.search(t) else 0) \
-            - (4 if ROBOT.search(t) else 0) + (2 if (d is None or it.get("dt", d)[:8] == d) else 0)
+            - (4 if ROBOT.search(t) else 0) + (2 if (d is None or it.get("dt", d)[:8] == d) else 0) \
+            + (4 if prefer and prefer in t else 0)
         if s > bs:
             best, bs = it, s
     return best
@@ -473,10 +475,20 @@ def news_all():
 
 
 # ── 분류·빌드 ─────────────────────────────────────────
-def classify(stocks, sg):
+def classify(stocks, sg, ng=None):
     rem = [s for s in stocks if passes(s)]
     themes = []
-    while rem:
+    while ng:                                 # ① 그날 뉴스 키워드를 함께 가진 종목부터 묶는다
+        cand = [(k, [s for s in rem if s["code"] in cs]) for k, cs in ng.items()]
+        cand = [(k, ss) for k, ss in cand if len(ss) >= THEME_MIN]
+        if not cand:
+            break
+        k, ss = max(cand, key=lambda kv: (round(sum(weight(x) for x in kv[1]), 6), len(kv[1])))
+        themes.append({"name": k, "stocks": sorted(ss, key=lambda x: -x["chg"]),
+                       "score": round(sum(weight(x) for x in ss), 2), "news": True})
+        ids = {x["code"] for x in ss}
+        rem = [s for s in rem if s["code"] not in ids]
+    while rem:                                # ② 나머지는 네이버 키워드 테마로
         cnt = defaultdict(list)
         for s in rem:
             for g in sg.get(s["code"], ()):
@@ -492,12 +504,15 @@ def classify(stocks, sg):
                        "score": round(sum(weight(x) for x in ss), 2)})
         ids = {x["code"] for x in ss}
         rem = [s for s in rem if s["code"] not in ids]
+    # 주도 자격: 뉴스 테마(2종목↑이 같은 키워드 = 그날 실제 재료) 또는 3종목↑ 또는 점수 4↑
+    for t in themes:
+        t["elig"] = bool(t.get("news")) or len(t["stocks"]) >= LEAD_MIN or t.get("score", 0) >= LEAD_SCORE
+    themes.sort(key=lambda t: (t["elig"], bool(t.get("news")), t["score"]), reverse=True)
     if rem:
         themes.append({"name": "기타(개별)", "stocks": sorted(rem, key=lambda x: -x["chg"]), "etc": True})
     lead = 0
     for t in themes:
-        t["lead"] = (not t.get("etc")) and lead < LEAD_MAX and \
-            (len(t["stocks"]) >= LEAD_MIN or t.get("score", 0) >= LEAD_SCORE)
+        t["lead"] = (not t.get("etc")) and lead < LEAD_MAX and t.get("elig", False)
         lead += t["lead"]
     return themes
 
@@ -507,6 +522,8 @@ def build():
     if unknown:
         print("⚠ 매핑 안 된 네이버 테마:", sorted(unknown))
     days = sorted(p.stem for p in (RAW / "days").glob("*.json"))
+    stock_names = {clean_name(n) for v in load(RAW / "naver_themes.json", {}).values() for _, n in v["stocks"]}
+    stock_names |= {clean_name(n) for n in load(RAW / "names.json", {}).values()}
     hist_lead, hist_seen = [], []
     stat_rows = []
     months = defaultdict(list)
@@ -514,7 +531,19 @@ def build():
     for i, d in enumerate(days):
         day = load(RAW / "days" / f"{d}.json")
         prev_d = days[i - 1] if i else d
-        themes = classify(day["stocks"], sg)
+        stock_kw, titles_of = {}, {}
+        for s in day["stocks"]:
+            if not passes(s):
+                continue
+            tl = [x["t"] for x in (gnews(s["name"], d, prev_d, fetch=False) or [])
+                  if prev_d + "1530" <= x["dt"] <= d + "1800"]
+            tl += [x["t"] for x in (search_news(s["name"], d, fetch=False) or [])]
+            stock_kw[s["code"]] = NK.top_keywords(tl, clean_name(s["name"]), stock_names)
+        # 네이버에 이미 같은 이름(또는 그걸 포함한 이름)의 테마가 있으면 그쪽 구성이 더 정확하다
+        # → 뉴스 테마는 네이버에 없는 사건성 키워드(페스트·데이터센터·중동…)에만 쓴다 (8/13 삼성전기 MLCC 유지)
+        ng = {k: set(cs) for k, cs in NK.news_groups(stock_kw).items()
+              if not any(k.rstrip("주株") in name or name in k for name in TSIZE)}
+        themes = classify(day["stocks"], sg, ng)
         nx = load(RAW / "nxt" / f"{d}.json", {})
         hist_lead.append({t["name"] for t in themes if t["lead"]})
         hist_seen.append({t["name"] for t in themes if not t.get("etc")})
@@ -526,7 +555,9 @@ def build():
             for s in t["stocks"]:
                 cand = (search_news(s["name"], d, fetch=False) or []) +                     [x for x in (gnews(s["name"], d, prev_d, fetch=False) or [])
                      if prev_d + "1530" <= x["dt"] <= d + "1800"]
-                nw = best_search(cand, s["name"], d)
+                kws_ = stock_kw.get(s["code"]) or []
+                pref = t["name"] if t.get("news") else (kws_[0][0] if kws_ else None)
+                nw = best_search(cand, s["name"], d, prefer=pref)
                 if nw is None:
                     nc = load(RAW / "news_cache" / f"{s['code']}.json", {"items": []})
                     nw = pick_news(nc["items"], s["name"], d, prev_d)
@@ -556,13 +587,16 @@ def build():
                 elif not any(nm in x for x in hist_seen[-1 - NEW_LOOKBACK:-1]) and i >= NEW_LOOKBACK:
                     life = "NEW"
             br = (day.get("breadth") or {}).get(nm)
-            if t["lead"] and rows:
+            if t["lead"] and rows and not t.get("news"):
                 hi = bool(br and br[1] >= BREADTH_MIN_N and br[0] / br[1] >= BREADTH_HI)
                 top = max(rows, key=lambda r: r["val"])
                 top["tag"] = "king" if hi else "solo"
                 for r in rows:
                     r["_g2"] = ("king" if hi else "solo") if r is top else ("fol_hi" if hi else "fol_lo")
+            if t.get("news"):
+                br = None
             out_t.append({"name": nm, "lead": t["lead"], "etc": bool(t.get("etc")), "stocks": rows, "life": life, "br": br,
+                          "news": bool(t.get("news")),
                           "val": round(sum(r["val"] for r in rows), 1),
                           "lead3m": sum(nm in x for x in win_l), "seen3m": sum(nm in x for x in win_s)})
         n = sum(len(t["stocks"]) for t in themes)
