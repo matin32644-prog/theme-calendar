@@ -1,0 +1,45 @@
+name: update
+# 평일 16:30 KST 본장, 20:40 KST 넥장 (KST = UTC+9, 서머타임 없음)
+on:
+  schedule:
+    - cron: "30 7 * * 1-5"
+    - cron: "40 11 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "close | nxt | probe | build"
+        required: true
+        default: probe
+permissions:
+  contents: write
+concurrency:
+  group: update
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - name: run
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          TZ: Asia/Seoul
+        run: |
+          git config user.name "theme-cal-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          MODE="${{ github.event.inputs.mode }}"
+          if [ -z "$MODE" ]; then
+            if [ "${{ github.event.schedule }}" = "40 11 * * 1-5" ]; then MODE=nxt; else MODE=close; fi
+          fi
+          echo "mode=$MODE"
+          case "$MODE" in
+            close|nxt) python -X utf8 pipeline/themecal.py daily --$MODE ;;
+            build) python -X utf8 pipeline/themecal.py build && python -X utf8 pipeline/themecal.py publish ;;
+            *) python -X utf8 pipeline/themecal.py probe ;;
+          esac

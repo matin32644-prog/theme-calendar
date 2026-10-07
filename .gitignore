@@ -1,0 +1,3 @@
+pipeline/raw/prices.json
+*.log
+__pycache__/
