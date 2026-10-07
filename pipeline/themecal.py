@@ -33,7 +33,7 @@ from theme_groups import EXCLUDE, THEME_TO_GROUP  # noqa: E402
 
 # ── 설정 ─────────────────────────────────────────────
 THRESH_CHG = 7.0          # 급등: 정규장 등락률 % 이상
-THRESH_VALUE = 30.0       # 급등: 거래대금 억원 이상
+THRESH_VALUE = 200.0      # 급등: 거래대금 억원 이상 (2026-10-07 사용자 지시로 30 → 200 "타이트하게")
 RAW_MIN_CHG = 4.0         # 원자료 저장 하한
 RAW_MIN_VALUE = 10.0
 LEAD_MIN = 3              # 주도(빨강) 테마 최소 종목 수
