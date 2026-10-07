@@ -116,6 +116,9 @@ h1 span{color:var(--muted)}
 .pr .u{color:var(--up);font-weight:700} .pr .d{color:var(--down);font-weight:700}
 .pr small{color:var(--muted)}
 .why{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.5}
+.vv{font-size:12px;color:var(--muted);margin-left:6px;font-weight:500}
+.vv.big{color:var(--lead);font-weight:700}
+.kw{display:inline-block;font-size:11px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:0 7px;margin:5px 4px 0 0}
 .why a{text-decoration:none;color:var(--muted)} .why a:hover{text-decoration:underline}
 .src a{display:block;font-size:13px;color:var(--muted);margin:5px 0;line-height:1.45}
 .disc{font-size:12px;color:var(--muted);margin-top:16px;line-height:1.6}
@@ -162,6 +165,7 @@ const cache = {};
 let IDX = null, cur = null, hits = new Set(), hitLabel = "", IPO = {}, IPOM = new Set();
 
 const pct = (v, dg=2) => (v>0?"+":"") + v.toFixed(dg) + "%";
+const won = v => v>=10000 ? (v/10000).toFixed(v>=100000?0:1)+"조" : Math.round(v).toLocaleString("ko-KR")+"억";
 const ymd = d => d.getFullYear() + String(d.getMonth()+1).padStart(2,"0") + String(d.getDate()).padStart(2,"0");
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
@@ -222,7 +226,8 @@ async function render(m){
   const n = Object.keys(map).filter(k=>k.startsWith(m.replace("-",""))).length;
   const r = IDX.rule;
   $("#foot").innerHTML = "이 달 기록 "+n+"거래일 · 평일 16시 30분(본장), 20시 40분(넥장) 무렵 자동 갱신 · 마지막 갱신 "+esc(IDX.updated)+
-    "<br>급등 기준: 정규장 +"+r.chg+"% 이상 · 거래대금 "+r.val+"억 이상. 주도 테마 = 급등 종목 "+r.lead_min+"개 이상 몰린 상위 3개"+
+    "<br>급등 기준: 정규장 +"+r.chg+"% 이상 · 거래대금 "+r.val+"억 이상. 테마 순위 = 거래대금 점수 합("+(r.unit||200)+"억=1점, 10배마다 +1점). "+
+    "주도 테마 = 급등 "+r.lead_min+"종목 이상 또는 점수 "+(r.lead_score||4)+"점 이상인 상위 3개. 테마 이름은 네이버 테마 키워드 기준"+
     (IDX.backfill_until ? "<br>"+fmtD(IDX.backfill_until)+"까지는 소급 기록(테마 구성은 2026-10 기준이라 근사치, 넥장 없음)" : "");
 }
 function fmtD(k){ return k.slice(0,4)+"-"+k.slice(4,6)+"-"+k.slice(6); }
@@ -244,8 +249,10 @@ function stockRow(s, tn){
     (s.nx!=null ? '<br><span class="k">넥장</span><span class="'+(s.nx>=0?"u":"d")+'">'+pct(s.nx,1)+'</span> <small>('+pct(s.nxe,1)+')</small>' : '');
   const why = s.why ? '<div class="why"><a href="'+esc(s.u)+'" target="_blank" rel="noopener">'+esc(s.why)+'</a> · '+esc(s.o)+'</div>'
                     : '<div class="why">그날 종목 기사 없음'+(tn && tn!=="기타(개별)" ? ' · '+esc(tn)+' 동반 강세' : '')+'</div>';
+  const kw = (s.kw||[]).map(k=>'<span class="kw">'+esc(k)+'</span>').join("");
   return '<div class="st"><div class="st1"><div><span class="sn">'+esc(s.n)+'</span>'+(s.co?'<span class="co">동반</span>':'')+
-    '</div><div class="pr">'+pr+'</div></div>'+why+'</div>';
+    '<span class="vv'+(s.val>=1000?' big':'')+'">'+(s.val>=1000?'🔥':'')+won(s.val)+'</span>'+
+    '</div><div class="pr">'+pr+'</div></div>'+why+(kw?'<div>'+kw+'</div>':'')+'</div>';
 }
 
 function openDay(day){
@@ -258,7 +265,7 @@ function openDay(day){
   h += '<div class="sec">본장 테마</div>';
   day.themes.forEach((t,i)=>{
     h += '<div class="th'+(i===0?" open":"")+'"><div class="thh"><div><span class="thn'+(t.lead?" l":"")+'">'+esc(t.name)+'</span>'+
-      (t.lead3m>0?'<span class="badge">3개월 주도 '+t.lead3m+'회</span>':'')+'</div><span class="cnt">주도주 '+t.stocks.length+' ▾</span></div><div class="tb">';
+      (t.lead3m>0?'<span class="badge">3개월 주도 '+t.lead3m+'회</span>':'')+'</div><span class="cnt">'+t.stocks.length+'종목 · '+won(t.val||0)+' ▾</span></div><div class="tb">';
     if (!t.etc) h += '<div class="info">최근 3개월 주도 테마 <b>'+t.lead3m+'</b>회 &nbsp; 테마 등장 '+t.seen3m+'회 &nbsp; 기록 '+day.win+'거래일 기준</div>';
     t.stocks.slice(0,8).forEach(s=> h += stockRow(s, t.name));
     if (t.stocks.length > 8){

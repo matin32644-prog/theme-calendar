@@ -29,7 +29,8 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
-from theme_groups import EXCLUDE, THEME_TO_GROUP  # noqa: E402
+from theme_keywords import keyword  # noqa: E402   (2026-10-07 굵은 40개 묶음 → 키워드 테마로 교체)
+import math
 
 # ── 설정 ─────────────────────────────────────────────
 THRESH_CHG = 7.0          # 급등: 정규장 등락률 % 이상
@@ -37,9 +38,11 @@ THRESH_VALUE = 200.0      # 급등: 거래대금 억원 이상 (2026-10-07 사�
 RAW_MIN_CHG = 4.0         # 원자료 저장 하한
 RAW_MIN_VALUE = 10.0
 LEAD_MIN = 3              # 주도(빨강) 테마 최소 종목 수
+LEAD_SCORE = 4.0         # 또는 거래대금 점수 합이 이 이상이면 2종목이어도 주도 (예: 1.7조+수백억 = MLCC 8/13)
 LEAD_MAX = 3              # 주도 테마 최대 개수
 THEME_MIN = 2             # 테마로 묶는 최소 종목 수
 WINDOW = 63               # "3개월" = 63거래일
+VALUE_UNIT = 200.0       # 거래대금 가점: 200억=1점, 2,000억=2점, 2조=3점 (2026-10-07 사용자 "수천억~조 단위엔 가점")
 BACKFILL_FROM = "20260701"
 
 BASE = Path(__file__).parent              # 저장소/pipeline
@@ -111,19 +114,27 @@ def refresh_themes(force=False):
     print("themes", len(mem))
 
 
+TSIZE = {}                                # 키워드 테마별 구성 종목 수(작을수록 구체적)
+
+
 def stock_groups():
     mem = load(RAW / "naver_themes.json", {})
     sg = defaultdict(set)
-    unknown = set()
+    members = defaultdict(set)
     for v in mem.values():
-        g = THEME_TO_GROUP.get(v["name"])
+        g = keyword(v["name"])
         if g is None:
-            if v["name"] not in EXCLUDE:
-                unknown.add(v["name"])
             continue
         for code, _ in v["stocks"]:
             sg[code].add(g)
-    return sg, unknown
+            members[g].add(code)
+    TSIZE.clear()
+    TSIZE.update({g: len(c) for g, c in members.items()})
+    return sg, set()
+
+
+def weight(s):
+    return 1 + math.log10(max(s["val"], VALUE_UNIT) / VALUE_UNIT)
 
 
 # ── 수집 ─────────────────────────────────────────────
@@ -421,17 +432,21 @@ def classify(stocks, sg):
                 cnt[g].append(s)
         if not cnt:
             break
-        g, ss = max(cnt.items(), key=lambda kv: (len(kv[1]), sum(x["chg"] for x in kv[1])))
+        # 거래대금 가점 합 → 종목 수 → 더 구체적인(작은) 테마 순
+        g, ss = max(cnt.items(), key=lambda kv: (round(sum(weight(x) for x in kv[1]), 6), len(kv[1]),
+                                                  -TSIZE.get(kv[0], 999)))
         if len(ss) < THEME_MIN:
             break
-        themes.append({"name": g, "stocks": sorted(ss, key=lambda x: -x["chg"])})
+        themes.append({"name": g, "stocks": sorted(ss, key=lambda x: -x["chg"]),
+                       "score": round(sum(weight(x) for x in ss), 2)})
         ids = {x["code"] for x in ss}
         rem = [s for s in rem if s["code"] not in ids]
     if rem:
         themes.append({"name": "기타(개별)", "stocks": sorted(rem, key=lambda x: -x["chg"]), "etc": True})
     lead = 0
     for t in themes:
-        t["lead"] = (not t.get("etc")) and lead < LEAD_MAX and len(t["stocks"]) >= LEAD_MIN
+        t["lead"] = (not t.get("etc")) and lead < LEAD_MAX and \
+            (len(t["stocks"]) >= LEAD_MIN or t.get("score", 0) >= LEAD_SCORE)
         lead += t["lead"]
     return themes
 
@@ -464,6 +479,9 @@ def build():
                     nc = load(RAW / "news_cache" / f"{s['code']}.json", {"items": []})
                     nw = pick_news(nc["items"], s["name"], d, prev_d)
                 r = {"c": s["code"], "n": s["name"], "chg": s["chg"], "val": s["val"]}
+                kws = sorted(sg.get(s["code"], set()) - {t["name"]}, key=lambda k: TSIZE.get(k, 999))[:3]
+                if kws:
+                    r["kw"] = kws
                 if s["code"] in nx:
                     r["nx"] = nx[s["code"]]["tot"]
                     r["nxe"] = nx[s["code"]]["ext"]
@@ -477,6 +495,7 @@ def build():
             nm = t["name"]
             search[nm].add(d)
             out_t.append({"name": nm, "lead": t["lead"], "etc": bool(t.get("etc")), "stocks": rows,
+                          "val": round(sum(r["val"] for r in rows), 1),
                           "lead3m": sum(nm in x for x in win_l), "seen3m": sum(nm in x for x in win_s)})
         n = sum(len(t["stocks"]) for t in themes)
         leads = [t for t in out_t if t["lead"]]
@@ -497,7 +516,8 @@ def build():
         save(SITE / "data" / f"{m[:4]}-{m[4:]}.json", {"month": m, "days": arr})
     save(SITE / "data" / "index.json", {
         "months": sorted(f"{m[:4]}-{m[4:]}" for m in months), "updated": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
-        "rule": {"chg": THRESH_CHG, "val": THRESH_VALUE, "lead_min": LEAD_MIN, "window": WINDOW},
+        "rule": {"chg": THRESH_CHG, "val": THRESH_VALUE, "lead_min": LEAD_MIN, "lead_score": LEAD_SCORE,
+                 "unit": VALUE_UNIT, "window": WINDOW},
         "backfill_until": max((d for d in days if (load(RAW / "days" / f"{d}.json") or {}).get("src") == "backfill"),
                               default=""),
         "search": {k: sorted(v) for k, v in search.items()}})
