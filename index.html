@@ -278,8 +278,9 @@ function openDay(day){
   day.themes.forEach((t,i)=>{
     h += '<div class="th'+(i===0?" open":"")+'"><div class="thh"><div><span class="thn'+(t.lead?" l":"")+'">'+esc(t.name)+'</span>'+
       (t.life?'<span class="life'+(t.life==="NEW"?" new":"")+'">'+esc(t.life)+'</span>':'')+
-      (t.lead3m>0?'<span class="badge">3개월 주도 '+t.lead3m+'회</span>':'')+'</div><span class="cnt">'+t.stocks.length+'종목 · '+won(t.val||0)+' ▾</span></div><div class="tb">';
-    if (!t.etc) h += '<div class="info">최근 3개월 주도 테마 <b>'+t.lead3m+'</b>회 &nbsp; 테마 등장 '+t.seen3m+'회 &nbsp; 기록 '+day.win+'거래일 기준</div>';
+      (t.lead3m>0?'<span class="badge">3개월 주도 '+t.lead3m+'회</span>':'')+'</div><span class="cnt">'+t.stocks.length+'종목 · '+won(t.val||0)+(t.br?' · 확산 '+Math.round(t.br[0]/t.br[1]*100)+'%':'')+' ▾</span></div><div class="tb">';
+    if (!t.etc) h += '<div class="info">최근 3개월 주도 테마 <b>'+t.lead3m+'</b>회 &nbsp; 테마 등장 '+t.seen3m+'회 &nbsp; 기록 '+day.win+'거래일 기준'+
+      (t.br?'<br>테마 확산도: 구성 '+t.br[1]+'종목 중 <b>'+t.br[0]+'</b>개 상승('+Math.round(t.br[0]/t.br[1]*100)+'%)':'')+'</div>';
     t.stocks.slice(0,8).forEach(s=> h += stockRow(s, t.name));
     if (t.stocks.length > 8){
       h += '<div class="rest" style="display:none">'+t.stocks.slice(8).map(s=>stockRow(s, t.name)).join("")+'</div>'+

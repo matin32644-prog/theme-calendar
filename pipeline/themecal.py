@@ -120,6 +120,47 @@ def refresh_themes(force=False):
 TSIZE = {}                                # 키워드 테마별 구성 종목 수(작을수록 구체적)
 
 
+def keyword_members():
+    mem = load(RAW / "naver_themes.json", {})
+    out = defaultdict(set)
+    for v in mem.values():
+        g = keyword(v["name"])
+        if g:
+            out[g].update(c for c, _ in v["stocks"])
+    return out
+
+
+def breadth_from_changes(chg):
+    """chg: {종목코드: 등락률} → {키워드: [상승 수, 집계 수]} (2026-10-07 '테마 확산도', 투자왕닷컴 positive_breadth 착안)"""
+    out = {}
+    for g, codes in keyword_members().items():
+        v = [chg[c] for c in codes if c in chg]
+        if v:
+            out[g] = [sum(x > 0 for x in v), len(v)]
+    return out
+
+
+def breadth_today():
+    """장 마감 뒤 네이버 테마 상세(테마당 1~2회 호출)로 전 구성종목 등락을 모은다"""
+    mem = load(RAW / "naver_themes.json", {})
+
+    def job(no):
+        res, pg = {}, 1
+        while True:
+            j = jget(f"{API}/stocks/theme/{no}?page={pg}&pageSize=100") or {}
+            st_ = j.get("stocks", [])
+            for x in st_:
+                res[x["itemCode"]] = num(x.get("fluctuationsRatio"))
+            if len(st_) < 100:
+                return res
+            pg += 1
+    chg = {}
+    with ThreadPoolExecutor(6) as ex:
+        for r in ex.map(job, list(mem)):
+            chg.update(r)
+    return breadth_from_changes(chg)
+
+
 def stock_groups():
     mem = load(RAW / "naver_themes.json", {})
     sg = defaultdict(set)
@@ -174,8 +215,13 @@ def collect():
                 break
             pg += 1
     d = today.replace("-", "")
+    try:
+        br = breadth_today()
+    except Exception as e:
+        print("breadth fail", e)
+        br = {}
     save(RAW / "days" / f"{d}.json", {"date": d, "kospi": ix["KOSPI"]["chg"], "kosdaq": ix["KOSDAQ"]["chg"],
-                                      "src": "naver_live", "stocks": stocks})
+                                      "src": "naver_live", "stocks": stocks, "breadth": br})
     print("collect", d, len(stocks))
     return d
 
@@ -507,7 +553,8 @@ def build():
                     life = f"{k}일째"
                 elif not any(nm in x for x in hist_seen[-1 - NEW_LOOKBACK:-1]) and i >= NEW_LOOKBACK:
                     life = "NEW"
-            out_t.append({"name": nm, "lead": t["lead"], "etc": bool(t.get("etc")), "stocks": rows, "life": life,
+            br = (day.get("breadth") or {}).get(nm)
+            out_t.append({"name": nm, "lead": t["lead"], "etc": bool(t.get("etc")), "stocks": rows, "life": life, "br": br,
                           "val": round(sum(r["val"] for r in rows), 1),
                           "lead3m": sum(nm in x for x in win_l), "seen3m": sum(nm in x for x in win_s)})
         n = sum(len(t["stocks"]) for t in themes)
@@ -721,6 +768,21 @@ if __name__ == "__main__":
         news_all()
     elif cmd == "build":
         build()
+    elif cmd == "breadth_backfill":         # prices.json(PC 전용)으로 지난 날 확산도를 day 파일에 채움
+        P = load(RAW / "prices.json")["prices"]
+        for f in sorted((RAW / "days").glob("*.json")):
+            day = load(f)
+            if day.get("breadth"):
+                continue
+            d, chg = day["date"], {}
+            for c, rows in P.items():
+                for k in range(1, len(rows)):
+                    if rows[k][0] == d and rows[k - 1][4] > 0:
+                        chg[c] = (rows[k][4] / rows[k - 1][4] - 1) * 100
+                        break
+            day["breadth"] = breadth_from_changes(chg)
+            save(f, day)
+            print(d, len(chg), len(day["breadth"]))
     elif cmd == "px":
         px_update(sorted(p.stem for p in (RAW / "days").glob("*.json")))
     elif cmd == "publish":
