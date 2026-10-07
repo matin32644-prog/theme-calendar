@@ -47,6 +47,8 @@ BACKFILL_FROM = "20260701"
 NEW_LOOKBACK = 20        # "NEW" = 직전 20거래일 동안 한 번도 테마로 안 나왔던 키워드
 COOL_DAYS = 3            # "식는 테마" = 직전 3거래일 안에 주도였는데 오늘은 주도 아님(최대 3개)
 STAT_H = (1, 5, 20)      # 성과 통계: 다음 날 시가 매수 → N거래일 뒤 종가, 지수 대비
+BREADTH_HI = 0.70        # 찐 대장: 주도 테마의 거래대금 1위 + 테마 확산도 70%↑(구성 5종목↑). 미달이면 "혼자 튐"
+BREADTH_MIN_N = 5        # (2026-10-07 65일 검정: 찐 대장 +0.5/+0.1% vs 혼자 튐 −3.9/−6.0%, 1/5일 지수 대비)
 
 BASE = Path(__file__).parent              # 저장소/pipeline
 RAW = BASE / "raw"
@@ -554,6 +556,12 @@ def build():
                 elif not any(nm in x for x in hist_seen[-1 - NEW_LOOKBACK:-1]) and i >= NEW_LOOKBACK:
                     life = "NEW"
             br = (day.get("breadth") or {}).get(nm)
+            if t["lead"] and rows:
+                hi = bool(br and br[1] >= BREADTH_MIN_N and br[0] / br[1] >= BREADTH_HI)
+                top = max(rows, key=lambda r: r["val"])
+                top["tag"] = "king" if hi else "solo"
+                for r in rows:
+                    r["_g2"] = ("king" if hi else "solo") if r is top else ("fol_hi" if hi else "fol_lo")
             out_t.append({"name": nm, "lead": t["lead"], "etc": bool(t.get("etc")), "stocks": rows, "life": life, "br": br,
                           "val": round(sum(r["val"] for r in rows), 1),
                           "lead3m": sum(nm in x for x in win_l), "seen3m": sum(nm in x for x in win_s)})
@@ -585,6 +593,8 @@ def build():
                 grp = "other"
             for r in t["stocks"]:
                 stat_rows.append((d, grp, r["c"]))
+                if "_g2" in r:
+                    stat_rows.append((d, r.pop("_g2"), r["c"]))
         months[d[:6]].append({"d": d, "kospi": day["kospi"], "kosdaq": day["kosdaq"], "n": n,
                               "src": day.get("src"), "summary": summ, "themes": out_t, "win": len(win_l),
                               "news": [{"t": s["t"], "u": s["u"], "o": s["o"]} for s in srcs], "cool": cool})
