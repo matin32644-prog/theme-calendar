@@ -1049,6 +1049,10 @@ if __name__ == "__main__":
         t = requests.get("https://api.finance.naver.com/siseJson.naver?symbol=005930&requestType=1&startTime=20261001"
                          "&endTime=20261006&timeframe=day", headers=H, timeout=15).text
         print("siseJson", t.count('["2026'))
+        tv = tv_today()
+        print("tradingview", len(tv), tv.get("005930"))
+        _, rows = KC.rows_of("005930", (t0 - timedelta(days=10)).strftime("%Y%m%d"))
+        print("krx_close", list(KC.krx_closes(rows).items())[-2:])
     elif cmd == "daily":
         today = datetime.now(KST).strftime("%Y%m%d")
         if not IN_ACTIONS:                   # PC = 예비 실행. 깃허브 액션이 이미 했으면 건너뜀
