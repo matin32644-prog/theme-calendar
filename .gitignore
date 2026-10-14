@@ -1,3 +1,4 @@
 pipeline/raw/prices.json
 *.log
 __pycache__/
+pipeline/raw/krx_px.json

@@ -31,6 +31,7 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent))
 from theme_keywords import keyword  # noqa: E402   (2026-10-07 굵은 40개 묶음 → 키워드 테마로 교체)
 import news_keywords as NK  # noqa: E402            (2026-10-07 뉴스 키워드 테마: 페스트 오분류 사건)
+import krx_close as KC  # noqa: E402                (2026-10-14 KRX 정규장 종가 복원: 애프터마켓 섞임 사건)
 import math
 
 # ── 설정 ─────────────────────────────────────────────
@@ -196,39 +197,101 @@ def index_today():
     return out
 
 
-def collect():
-    today = datetime.now(KST).strftime("%Y-%m-%d")
-    ix = index_today()
-    if ix["KOSPI"]["at"] != today:
-        print("휴장 또는 데이터 없음:", ix)
-        return None
-    stocks = []
+TV_SCAN = "https://scanner.tradingview.com/korea/scan"
+
+
+def tv_today():
+    """트레이딩뷰 스캐너 = KRX 정규장 시세(넥스트레이드 애프터마켓 미포함), 한 번 호출로 전 종목.
+    {code: (종가, 등락률 %, 거래대금 억원 = 종가×거래량)}. 2026-10-14 도입:
+    네이버 시세는 장 마감 뒤 애프터마켓 가격이 섞여 정규장 등락률과 어긋났다(국제약품 10/13 사이트 +16.56% · KRX +15.40%)"""
+    body = {"columns": ["name", "close", "change", "Value.Traded", "type", "subtype"], "range": [0, 8000],
+            "markets": ["korea"]}
+    r = requests.post(TV_SCAN, json=body, headers=H, timeout=30)
+    out = {}
+    for x in r.json().get("data", []):
+        code, cl, chg, val, ty, sub = x["d"]
+        if ty != "stock" or sub != "common" or not cl or chg is None or val is None:
+            continue
+        out[str(code)] = (float(cl), float(chg), float(val) / 1e8)
+    return out
+
+
+def naver_up():
+    """네이버 상승 상위(통합 시세). 이름·시장 확인용 + 트레이딩뷰 실패 시 대체 자료"""
+    got = {}
     for mk in ("KOSPI", "KOSDAQ"):
         pg = 1
         while pg < 20:
             j = jget(f"{API}/stocks/up/{mk}?page={pg}&pageSize=100") or {}
             st = j.get("stocks", [])
             for s in st:
-                chg = num(s.get("fluctuationsRatio"))
-                code, name = s["itemCode"], s["stockName"]
-                if s.get("stockEndType") != "stock" or code[-1] != "0" or "스팩" in name:
-                    continue
-                val = num(s.get("accumulatedTradingValue")) / 100     # 백만원 → 억원
-                if chg >= RAW_MIN_CHG and val >= RAW_MIN_VALUE:
-                    stocks.append({"code": code, "name": name, "mk": mk, "chg": round(chg, 2),
-                                   "val": round(val, 1), "close": num(s.get("closePrice"))})
+                got[s["itemCode"]] = dict(s, mk=mk)
             if not st or num(st[-1].get("fluctuationsRatio")) < RAW_MIN_CHG:
                 break
             pg += 1
-    d = today.replace("-", "")
+    return got
+
+
+def name_mk(code, nav, names, mkc):
+    """(이름, 시장, 보통주 여부). 네이버 상승 목록 → 저장된 이름·시장 → 네이버 종목 기본정보 순"""
+    if code in nav:
+        s = nav[code]
+        return s["stockName"], s["mk"], s.get("stockEndType") == "stock"
+    if code in names and code in mkc:
+        return names[code], mkc[code], True
+    j = jget(f"{API}/stock/{code}/basic") or {}
+    nm = j.get("stockName") or names.get(code) or code
+    mk = (j.get("stockExchangeType") or {}).get("name") or mkc.get(code) or "KOSDAQ"
+    return nm, mk, j.get("stockEndType", "stock") == "stock" and mk in ("KOSPI", "KOSDAQ")   # 코넥스 제외
+
+
+def collect():
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    ix = index_today()
+    if ix["KOSPI"]["at"] != today:
+        print("휴장 또는 데이터 없음:", ix)
+        return None
+    nav = naver_up()
     try:
-        br = breadth_today()
+        tv = tv_today()
     except Exception as e:
-        print("breadth fail", e)
-        br = {}
+        print("트레이딩뷰 실패", e)
+        tv = {}
+    stocks = []
+    if len(tv) > 1500:
+        price_src = "krx_tv"
+        names, mkc = load(RAW / "names.json", {}), load(RAW / "mk.json", {})
+        for code, (cl, chg, val) in tv.items():
+            if code[-1] != "0" or chg < RAW_MIN_CHG or val < RAW_MIN_VALUE:
+                continue
+            name, mk, ok = name_mk(code, nav, names, mkc)
+            if not ok or "스팩" in name:
+                continue
+            mkc[code] = mk
+            stocks.append({"code": code, "name": name, "mk": mk, "chg": round(chg, 2),
+                           "val": round(val, 1), "close": cl})
+        save(RAW / "mk.json", mkc)
+        br = breadth_from_changes({c: v[1] for c, v in tv.items()})
+    else:                                    # 대체: 네이버 통합 시세(애프터마켓이 섞인다)
+        price_src = "naver_int"
+        notify_fail(f"트레이딩뷰 KRX 시세({len(tv)}종목) → 네이버 통합 시세로 대체")
+        for code, s in nav.items():
+            chg, name = num(s.get("fluctuationsRatio")), s["stockName"]
+            if s.get("stockEndType") != "stock" or code[-1] != "0" or "스팩" in name:
+                continue
+            val = num(s.get("accumulatedTradingValue")) / 100     # 백만원 → 억원
+            if chg >= RAW_MIN_CHG and val >= RAW_MIN_VALUE:
+                stocks.append({"code": code, "name": name, "mk": s["mk"], "chg": round(chg, 2),
+                               "val": round(val, 1), "close": num(s.get("closePrice"))})
+        try:
+            br = breadth_today()
+        except Exception as e:
+            print("breadth fail", e)
+            br = {}
+    d = today.replace("-", "")
     save(RAW / "days" / f"{d}.json", {"date": d, "kospi": ix["KOSPI"]["chg"], "kosdaq": ix["KOSDAQ"]["chg"],
-                                      "src": "naver_live", "stocks": stocks, "breadth": br})
-    print("collect", d, len(stocks))
+                                      "src": "naver_live", "price": price_src, "stocks": stocks, "breadth": br})
+    print("collect", d, len(stocks), price_src)
     return d
 
 
@@ -283,6 +346,68 @@ def backfill():
         save(f, {"date": d, "kospi": k["KOSPI"], "kosdaq": k["KOSDAQ"], "src": "backfill",
                  "stocks": by_date.get(d, [])})
     print("backfill days", len(dates))
+
+
+def krx_repair(start="20260901"):
+    """raw/krx_px.json(krx_close.py, PC 전용)으로 start 이후 day 파일의 종목 등락률·확산도를 KRX 정규장 기준으로 다시 쓴다.
+    2026-10-14: 9월 중순부터 네이버 종가에 넥스트레이드 애프터마켓이 섞여 급등 목록이 어긋났다(9월 60건·10월 25건 들고남).
+    넥장 파일(nxt)도 장후 가격을 보존한 채 기준(KRX 종가)만 바꿔 다시 계산한다."""
+    P = load(RAW / "krx_px.json")
+    uni = (load(RAW / "prices.json") or {}).get("universe", {})
+    names, mkc = load(RAW / "names.json", {}), load(RAW / "mk.json", {})
+    days = sorted(p.stem for p in (RAW / "days").glob("*.json"))
+    for i, d in enumerate(days):
+        if d < start or i == 0:
+            continue
+        p = days[i - 1]
+        f = RAW / "days" / f"{d}.json"
+        day = load(f)
+        old = {s["code"]: s for s in day["stocks"]}
+        chg, stocks, unconfirmed = {}, [], 0
+        for c, r in P.items():
+            a, b = r.get(p), r.get(d)
+            if not a or not b or a[1] <= 0:
+                continue
+            if not b[3]:
+                unconfirmed += 1
+                continue
+            x = (b[1] / a[1] - 1) * 100
+            chg[c] = x
+            v = b[1] * b[2] / 1e8
+            if c[-1] != "0" or x < RAW_MIN_CHG or v < RAW_MIN_VALUE:
+                continue
+            nm = (old.get(c) or {}).get("name") or names.get(c) or uni.get(c, {}).get("name")
+            mk = (old.get(c) or {}).get("mk") or mkc.get(c) or uni.get(c, {}).get("market")
+            if not nm or not mk:
+                nm2, mk2, ok = name_mk(c, {}, names, mkc)
+                if not ok:
+                    continue
+                nm, mk = nm or nm2, mk or mk2
+            if "스팩" in nm:
+                continue
+            mkc[c] = mk
+            stocks.append({"code": c, "name": nm, "mk": mk, "chg": round(x, 2), "val": round(v, 1), "close": b[1]})
+        if unconfirmed > 100:
+            print(d, "KRX 종가 미확정", unconfirmed, "→ 건너뜀")
+            continue
+        nf = RAW / "nxt" / f"{d}.json"
+        nx = load(nf, {})
+        if nx:
+            for c, v in nx.items():
+                o = old.get(c)
+                if not o or c not in P or d not in P[c] or p not in P[c]:
+                    continue
+                over = o["close"] * (1 + v["ext"] / 100)          # 장후 가격(그때 저장한 값에서 복원)
+                kc, kp = P[c][d][1], P[c][p][1]
+                v["ext"], v["tot"] = round((over / kc - 1) * 100, 2), round((over / kp - 1) * 100, 2)
+            save(nf, nx)
+        a_ = {c for c, s in old.items() if s["chg"] >= THRESH_CHG and s["val"] >= THRESH_VALUE}
+        b_ = {s["code"] for s in stocks if s["chg"] >= THRESH_CHG and s["val"] >= THRESH_VALUE}
+        day["stocks"], day["breadth"], day["price"] = stocks, breadth_from_changes(chg), "krx_fix"
+        save(f, day)
+        print(d, "급등", len(a_), "→", len(b_), "빠짐", sorted(old[c]["name"] for c in a_ - b_)[:6],
+              "새로", sorted(s["name"] for s in stocks if s["code"] in b_ - a_)[:6])
+    save(RAW / "mk.json", mkc)
 
 
 # ── 뉴스 ─────────────────────────────────────────────
@@ -700,14 +825,31 @@ def px_update(days):
     end = datetime.now(KST).strftime("%Y%m%d")
     new = {c for c in base if c not in px}                 # 기준선 표본은 처음 받을 때 전 기간
 
+    try:
+        tv = tv_today()
+    except Exception:
+        tv = {}
+    today = datetime.now(KST).strftime("%Y%m%d")
+
     def job(c):
-        u = (f"https://api.finance.naver.com/siseJson.naver?symbol={c}&requestType=1"
-             f"&startTime={full if c in new else start}&endTime={end}&timeframe=day")
-        try:
-            t = requests.get(u, headers=H, timeout=15).text
-        except Exception:
-            return c, []
-        return c, re.findall(r'\["(\d{8})",\s*([\d.]+),\s*[\d.]+,\s*[\d.]+,\s*([\d.]+)', t)
+        st = full if c in new else start
+        if c in ("KOSPI", "KOSDAQ"):            # 지수엔 애프터마켓이 없다 → 일봉 그대로
+            u = (f"https://api.finance.naver.com/siseJson.naver?symbol={c}&requestType=1"
+                 f"&startTime={st}&endTime={end}&timeframe=day")
+            try:
+                t = requests.get(u, headers=H, timeout=15).text
+            except Exception:
+                return c, []
+            return c, [(d, float(o), float(cl)) for d, o, cl in
+                       re.findall(r'\["(\d{8})",\s*([\d.]+),\s*[\d.]+,\s*[\d.]+,\s*([\d.]+)', t)]
+        # 종목은 KRX 정규장 종가로 (2026-10-14: 네이버 일봉 종가엔 넥스트레이드 애프터마켓이 섞인다 → krx_close.py)
+        _, rows = KC.rows_of(c, st)
+        out = []
+        for d, (o, cl, _, ok) in KC.krx_px(rows, st).items():
+            if not ok and d == today and c in tv:
+                cl = tv[c][0]
+            out.append((d, o, cl))
+        return c, out
     with ThreadPoolExecutor(6) as ex:
         for c, rows in ex.map(job, sorted(codes)):
             for d, o, cl in rows:
@@ -876,6 +1018,19 @@ if __name__ == "__main__":
             print(d, len(chg), len(day["breadth"]))
     elif cmd == "px":
         px_update(sorted(p.stem for p in (RAW / "days").glob("*.json")))
+    elif cmd == "krx_repair":               # PC 전용: krx_close.py 다음에 실행 → news → build → publish
+        krx_repair(sys.argv[2] if len(sys.argv) > 2 else "20260901")
+    elif cmd == "px_krx":                    # PC 전용: px.json 종가를 KRX 정규장 종가로 덮음(start 이후)
+        st = sys.argv[2] if len(sys.argv) > 2 else "20260901"
+        P, px = load(RAW / "krx_px.json"), load(RAW / "px.json")
+        n = 0
+        for c, rows in px.items():
+            for d, r in (P.get(c) or {}).items():
+                if d >= st and r[3] and d in rows:
+                    rows[d] = [r[0], r[1]]
+                    n += 1
+        save(RAW / "px.json", px)
+        print("px_krx", n)
     elif cmd == "publish":
         publish()
     elif cmd == "ipo":
