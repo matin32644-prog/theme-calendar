@@ -153,6 +153,26 @@ h1 span{color:var(--muted)}
 .why a{text-decoration:none;color:var(--muted)} .why a:hover{text-decoration:underline}
 .src a{display:block;font-size:13px;color:var(--muted);margin:5px 0;line-height:1.45}
 .disc{font-size:12px;color:var(--muted);margin-top:16px;line-height:1.6}
+/* 종목 검색 «그 뒤 성적» */
+.pf{margin-top:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 12px 10px;color:var(--ink);line-height:1.5}
+.pfh{font-size:12.5px;color:var(--muted)}
+.pf .pfh b{color:var(--ink)}
+.pfs{display:flex;gap:22px;flex-wrap:wrap;margin:6px 0 2px}
+.pfs span{display:block;font-size:12px;color:var(--muted)}
+.pf .pfs b{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:20px;font-weight:800}
+.pfs small{font-size:12px;color:var(--muted);margin-left:6px}
+.pf b.u{color:var(--up)} .pf b.d{color:var(--down)} .pf b.na{color:var(--muted)}
+.pfr{font-size:12px;color:var(--muted);margin:2px 0 8px}
+.pft{width:100%;border-collapse:collapse;font-size:13px}
+.pft th{font-weight:600;color:var(--muted);font-size:11.5px;text-align:right;padding:4px 3px;border-bottom:1px solid var(--line2)}
+.pft td{padding:6px 3px;text-align:right;border-bottom:1px solid var(--line);font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
+.pft th:first-child,.pft td:first-child{text-align:left}
+.pft td.tgc{text-align:center;font-family:inherit;font-size:12px;color:var(--muted)}
+.pft tr[data-d]{cursor:pointer}
+.pft tr[data-d]:hover td{background:var(--chip)}
+.pft td.u{color:var(--up)} .pft td.d{color:var(--down)} .pft td.na{color:var(--muted)}
+.pfm{margin-top:8px;width:100%}
+.pfn{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.55}
 @media (max-width:640px){
   .wrap{padding:16px 10px 40px}
   h1{font-size:26px}
@@ -431,19 +451,54 @@ function closeDay(){ $("#sheet").style.display="none"; $("#ov").style.display="n
 $("#ov").onclick = closeDay;
 document.addEventListener("keydown", e=>{ if (e.key==="Escape") closeDay(); });
 
+// 종목 검색의 «그 뒤 성적» (2026-10-14): data/perf.json = {종목명: {c, r: [[날짜, 그날 등락, 표시, 5일, 20일]]}}
+let PERF = null, STATS = null;
+async function perfData(){
+  if (!PERF){ try{ PERF = await fetch("data/perf.json?t="+Date.now()).then(r=>r.json()); }catch(e){ PERF = {}; } }
+  if (!STATS){ try{ STATS = await fetch("data/stats.json?t="+Date.now()).then(r=>r.json()); }catch(e){ STATS = {groups:{}}; } }
+}
+const f1p = v => { const r = Math.round(v*10)/10; return (r===0 ? "0.0" : (r>0?"+":"")+r.toFixed(1))+"%"; };
+function perfHtml(key){
+  const P = PERF && PERF[key]; if (!P) return "";
+  const rows = P.r.slice().reverse(), SHOW = 12;
+  const TG = {king:"👑", solo:"⚠", lead:"주도"};
+  const sum = i => { const v = rows.map(r=>r[i]).filter(x=>x!=null);
+    return v.length ? {m: v.reduce((a,b)=>a+b,0)/v.length, w: v.filter(x=>x>0).length, n: v.length} : null; };
+  const box = (lab, s) => '<div><span>'+lab+'</span>'+(s ? '<b class="'+(s.m>=0?"u":"d")+'">'+f1p(s.m)+'</b><small>지수 이긴 '+s.w+'/'+s.n+'번</small>'
+                                                    : '<b class="na">–</b><small>아직 안 지남</small>')+'</div>';
+  const G = (STATS && STATS.groups) || {}, L = G.lead1 && G.lead1["20"], B = G.base && G.base["20"];
+  const td = v => v==null ? '<td class="na">–</td>' : '<td class="'+(v>=0?"u":"d")+'">'+f1p(v)+'</td>';
+  let h = '<div class="pf"><div class="pfh">달력에 오른 다음 날 <b>시가</b>에 샀다면 · 같은 시장 지수 대비</div>';
+  h += '<div class="pfs">'+box("5일 뒤 평균", sum(3))+box("20일 뒤 평균", sum(4))+'</div>';
+  if (L && B) h += '<div class="pfr">비교 · 20일 뒤 평균: 달력 전체 주도 1일차 '+f1p(L.mean)+', 아무 종목 '+f1p(B.mean)+'</div>';
+  h += '<table class="pft"><tr><th>등장일</th><th>그날</th><th></th><th>5일 뒤</th><th>20일 뒤</th></tr>';
+  rows.forEach((r,i)=>{
+    h += '<tr data-d="'+r[0]+'"'+(i>=SHOW?' class="pfx" style="display:none"':'')+'><td>'+(+r[0].slice(4,6))+'/'+(+r[0].slice(6))+'</td>'+
+         '<td class="u">'+f1p(r[1])+'</td><td class="tgc">'+(TG[r[2]]||'')+'</td>'+td(r[3])+td(r[4])+'</tr>';
+  });
+  h += '</table>';
+  if (rows.length > SHOW) h += '<button class="x pfm" id="pfm">나머지 '+(rows.length-SHOW)+'번 보기</button>';
+  h += '<div class="pfn">줄을 누르면 그날 화면. – 는 아직 5·20거래일이 안 지난 날. 👑 찐 대장 · ⚠ 혼자 튐 · 주도 = 주도 테마 종목. 수수료·세금 빠짐.</div></div>';
+  return h;
+}
+
 // 검색
-function setHits(key){
+async function setHits(key){
   const ds = IDX.search[key] || [];
   hits = new Set(ds); hitLabel = key;
   const bar = $("#hitbar");
   if (!ds.length){ bar.style.display="none"; render(cur); return; }
+  await perfData();
+  const pf = perfHtml(key);
   bar.style.display = "block";
-  bar.innerHTML = '<b>'+esc(key)+'</b> 등장 '+ds.length+'일 · '+ds.slice().reverse().slice(0,40).map(d=>'<a data-d="'+d+'">'+(+d.slice(4,6))+'/'+(+d.slice(6))+'</a>').join("")+
-    ' <a id="clr">지우기</a>';
-  bar.querySelectorAll("a[data-d]").forEach(a=>a.onclick=async()=>{
+  bar.innerHTML = '<b>'+esc(key)+'</b> 등장 '+ds.length+'일 · '+
+    (pf ? '' : ds.slice().reverse().slice(0,40).map(d=>'<a data-d="'+d+'">'+(+d.slice(4,6))+'/'+(+d.slice(6))+'</a>').join(""))+
+    ' <a id="clr">지우기</a>'+pf;
+  bar.querySelectorAll("[data-d]").forEach(a=>a.onclick=async()=>{
     const d=a.dataset.d, m=d.slice(0,4)+"-"+d.slice(4,6); await render(m);
     const md = await month(m); const day = md.days.find(x=>x.d===d); if (day) openDay(day);
   });
+  if ($("#pfm")) $("#pfm").onclick = ()=>{ bar.querySelectorAll(".pfx").forEach(x=>x.style.display=""); $("#pfm").remove(); };
   $("#clr").onclick = ()=>{ hits=new Set(); $("#q").value=""; bar.style.display="none"; render(cur); };
   render(cur);
 }

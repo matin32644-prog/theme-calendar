@@ -623,9 +623,10 @@ def classify(stocks, sg, ng=None):
                 cnt[g].append(s)
         if not cnt:
             break
-        # 거래대금 가점 합 → 종목 수 → 더 구체적인(작은) 테마 순
+        # 거래대금 가점 합 → 종목 수 → 더 구체적인(작은) 테마 순 → 이름(완전 동률일 때 실행마다 같은 답을 내도록.
+        # 2026-10-14: sg 값이 set이라 동률이면 PYTHONHASHSEED에 따라 배정이 바뀌어 지난 날 화면·통계가 실행마다 흔들렸다)
         g, ss = max(cnt.items(), key=lambda kv: (round(sum(weight(x) for x in kv[1]), 6), len(kv[1]),
-                                                  -TSIZE.get(kv[0], 999)))
+                                                  -TSIZE.get(kv[0], 999), kv[0]))
         if len(ss) < THEME_MIN:
             break
         themes.append({"name": g, "stocks": sorted(ss, key=lambda x: -x["chg"]),
@@ -659,7 +660,7 @@ def build():
     for i, d in enumerate(days):
         day = load(RAW / "days" / f"{d}.json")
         prev_d = days[i - 1] if i else d
-        stock_kw, titles_of = {}, {}
+        stock_kw = {}
         for s in day["stocks"]:
             if not passes(s):
                 continue
@@ -690,7 +691,7 @@ def build():
                     nc = load(RAW / "news_cache" / f"{s['code']}.json", {"items": []})
                     nw = pick_news(nc["items"], s["name"], d, prev_d)
                 r = {"c": s["code"], "n": s["name"], "chg": s["chg"], "val": s["val"]}
-                kws = sorted(sg.get(s["code"], set()) - {t["name"]}, key=lambda k: TSIZE.get(k, 999))[:3]
+                kws = sorted(sg.get(s["code"], set()) - {t["name"]}, key=lambda k: (TSIZE.get(k, 999), k))[:3]
                 if kws:
                     r["kw"] = kws
                 if s["code"] in nx:
@@ -778,6 +779,7 @@ def build():
         "search": {k: sorted(v) for k, v in search.items()}})
     print("build", len(days), "days", len(months), "months")
     stats(stat_rows, days)
+    perf(months, days)
 
 
 # ── 가격 캐시·성과 통계 (2026-10-07 시제품 → 본편) ─────────────────────
@@ -858,17 +860,10 @@ def px_update(days):
     return px
 
 
-def stats(rows, days):
-    px = load(RAW / "px.json", {})
-    if not px:
-        print("px.json 없음 — 통계 건너뜀")
-        return
-    mk = {x["code"]: x.get("mk", "KOSDAQ") for d in days for x in load(RAW / "days" / f"{d}.json")["stocks"]}
+def fwd_fn(px):
+    """fwd(c, d, h) = d 다음 날 시가에 사서 h거래일 뒤 종가까지 수익률(%). 거래일 달력 = 코스피 일봉"""
     cal = sorted(px.get("KOSPI", {}))
     pos = {d: j for j, d in enumerate(cal)}
-    base = load(RAW / "base_codes.json", {})
-    mk.update(base)
-    rows = list(rows) + [(d, "base", c) for d in days for c in base]
 
     def fwd(c, d, h):
         if d not in pos:
@@ -879,6 +874,19 @@ def stats(rows, days):
         d1, dh = cal[j + 1], cal[j + h]
         a, b = px.get(c, {}).get(d1), px.get(c, {}).get(dh)
         return (b[1] / a[0] - 1) * 100 if a and b and a[0] > 0 else None
+    return fwd
+
+
+def stats(rows, days):
+    px = load(RAW / "px.json", {})
+    if not px:
+        print("px.json 없음 — 통계 건너뜀")
+        return
+    mk = {x["code"]: x.get("mk", "KOSDAQ") for d in days for x in load(RAW / "days" / f"{d}.json")["stocks"]}
+    base = load(RAW / "base_codes.json", {})
+    mk.update(base)
+    rows = list(rows) + [(d, "base", c) for d in days for c in base]
+    fwd = fwd_fn(px)
     agg = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     for d, grp, c in rows:
         ix = "KOSPI" if mk.get(c) == "KOSPI" else "KOSDAQ"
@@ -900,6 +908,33 @@ def stats(rows, days):
     save(SITE / "data" / "stats.json", {"groups": out, "from": days[0], "to": days[-1],
                                         "updated": datetime.now(KST).strftime("%Y-%m-%d %H:%M")})
     print("stats", {g: {h: v["mean"] for h, v in hs.items()} for g, hs in out.items()})
+
+
+PERF_H = (5, 20)
+
+
+def perf(months, days):
+    """종목 검색용 «그 뒤 성적» → data/perf.json {종목명: {c: 코드, r: [[날짜, 그날 등락, 표시, 5일, 20일], ...]}}
+    달력에 오른 날마다 다음 날 시가 → 5·20거래일 뒤 종가, 같은 시장 지수 대비(%p). 아직 안 지난 칸은 null.
+    표시: king(👑) · solo(⚠) · lead(주도 테마) · ""(그 밖). 2026-10-14 사용자 «1번 고고»(사기 전 브레이크를 한 화면에서)"""
+    px = load(RAW / "px.json", {})
+    if not px:
+        return
+    mk = {x["code"]: x.get("mk", "KOSDAQ") for d in days for x in load(RAW / "days" / f"{d}.json")["stocks"]}
+    fwd = fwd_fn(px)
+    out = {}
+    for arr in months.values():
+        for x in arr:
+            for t in x["themes"]:
+                for s in t["stocks"]:
+                    ix = "KOSPI" if mk.get(s["c"]) == "KOSPI" else "KOSDAQ"
+                    row = [x["d"], s["chg"], s.get("tag") or ("lead" if t["lead"] else "")]
+                    for h in PERF_H:
+                        r, m = fwd(s["c"], x["d"], h), fwd(ix, x["d"], h)
+                        row.append(None if r is None or m is None else round(r - m, 1))
+                    out.setdefault(s["n"], {"c": s["c"], "r": []})["r"].append(row)
+    save(SITE / "data" / "perf.json", out)
+    print("perf", len(out), "종목", sum(len(v["r"]) for v in out.values()), "건")
 
 
 # ── 공모주 일정 (2026-10-07 사용자: "공모주 청약일정 내 캘린더에 저장해줘. 우선 멜콘/엘리스그룹만") ──

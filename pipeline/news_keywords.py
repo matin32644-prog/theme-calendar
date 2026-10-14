@@ -51,10 +51,12 @@ def words(title, name):
 
 
 def top_keywords(titles, name, stock_names, k=3):
-    """titles: 그날 창 안의 기사 제목들 → [(키워드, 등장 기사 수)] 상위 k (2건 이상만)"""
+    """titles: 그날 창 안의 기사 제목들 → [(키워드, 등장 기사 수)] 상위 k (2건 이상만). 동률이면 제목에 먼저 나온 단어.
+    2026-10-14: 제목당 단어를 set으로 세서 동률 순서가 PYTHONHASHSEED마다 바뀌었다 → 뉴스 테마·이유 기사가 실행마다 달라짐.
+    이름순·그날 빈도·희귀도로 동률을 끊어 보니 "다시·폭등"이나 사람 이름이 테마가 되는 날이 늘어서 등장 순서로 정했다"""
     c = Counter()
     for t in titles:
-        c.update({w for w in words(t, name) if w not in stock_names})
+        c.update(list(dict.fromkeys(w for w in words(t, name) if w not in stock_names)))
     return [(w, n) for w, n in c.most_common(k) if n >= 2]
 
 
