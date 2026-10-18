@@ -670,8 +670,13 @@ def build():
             stock_kw[s["code"]] = NK.top_keywords(tl, clean_name(s["name"]), stock_names)
         # 네이버에 이미 같은 이름(또는 그걸 포함한 이름)의 테마가 있으면 그쪽 구성이 더 정확하다
         # → 뉴스 테마는 네이버에 없는 사건성 키워드(페스트·데이터센터·중동…)에만 쓴다 (8/13 삼성전기 MLCC 유지)
-        ng = {k: set(cs) for k, cs in NK.news_groups(stock_kw).items()
+        names = {s["code"]: clean_name(s["name"]) for s in day["stocks"]}
+        ng = {k: set(cs) for k, cs in NK.news_groups(stock_kw, names=names).items()
               if not any(k.rstrip("주株") in name or name in k for name in TSIZE)}
+        if i == len(days) - 1:                # 발행 전 점검 기록: 같은 계열 짝이라 뺀 뉴스 테마(깃허브 액션 로그에 남는다)
+            for k, cs in NK.news_groups(stock_kw).items():
+                if k not in ng and not any(k.rstrip("주株") in name or name in k for name in TSIZE):
+                    print(f"뉴스 테마 제외(같은 계열) {d} {k}: {'·'.join(names[c] for c in cs)}")
         themes = classify(day["stocks"], sg, ng)
         nx = load(RAW / "nxt" / f"{d}.json", {})
         hist_lead.append({t["name"] for t in themes if t["lead"]})

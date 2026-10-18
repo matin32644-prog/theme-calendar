@@ -28,7 +28,10 @@ STOP = set("""
 통합 결제 황제주 특허 차세대 여름 겨울 만주 집들 집들이 타임 클라쓰 최대주주 기대주 대장주 수혜주 관련株 테마주 우선주 동전주 저가주
 가격 참여 영업손실 확산 등극 장마감 편입 인수 요구 직접 회장 유지 올릴 공급계약 파트너사 지속가능경영보고서 재편 호실적 매각 합병
 최초 인상 조짐 개최 제동 나섰다 제출 나서 밝혀 밝혔다 전해 예정 검토
+향해 위해 대해 통해 인해 의해 관해 비해 따라 따른 힘입어 솟아오른 미국 애프터마켓 프리마켓 장전 장후 시간외 신고서 증권신고서 첫날 하루 이번주 다음주 지난주 연휴 광복절 KRX NXT 넥스트레이드 정규장 북미 이익 공략 불쑥
 """.split())
+# 2026-10-18 10/16 «향해» 사건: 피에스케이홀딩스 "하늘을 향해 불쑥 솟아오른 2027년" 기사 2건을 피에스케이도 같이 받아
+# 동사 «향해»가 두 종목 공통 키워드가 됐다. 위 마지막 줄 = 동사·부사형과 장외거래·공시 일반어(1~10월 전수 점검에서 나온 것)
 PARTICLE = re.compile(r"(에서|으로|까지|에게|에도|이라|라는|이며|하며|에는|에선|로는|에|의|가|이|은|는|을|를|와|과|도|로|만)$")
 
 
@@ -55,15 +58,29 @@ def top_keywords(titles, name, stock_names, k=3):
     2026-10-14: 제목당 단어를 set으로 세서 동률 순서가 PYTHONHASHSEED마다 바뀌었다 → 뉴스 테마·이유 기사가 실행마다 달라짐.
     이름순·그날 빈도·희귀도로 동률을 끊어 보니 "다시·폭등"이나 사람 이름이 테마가 되는 날이 늘어서 등장 순서로 정했다"""
     c = Counter()
-    for t in titles:
+    for t in dict.fromkeys(" ".join(x.split()) for x in titles):   # 2026-10-18 같은 기사가 두 출처로 들어오면 2건으로 세던 것 → 1건
         c.update(list(dict.fromkeys(w for w in words(t, name) if w not in stock_names)))
     return [(w, n) for w, n in c.most_common(k) if n >= 2]
 
 
-def news_groups(stock_kw, min_stocks=2):
-    """stock_kw: {code: [(kw, n), ...]} → {kw: [codes]} (각 종목 상위 2 키워드 기준, 2종목↑)"""
+def families(codes, names):
+    """이름이 서로를 품으면 한 계열(피에스케이⊂피에스케이홀딩스, SK⊂SK하이닉스, 테스⊂두산테스나) → 계열 묶음 수"""
+    groups = []
+    for c in codes:
+        n = names.get(c, c)
+        hit = [g for g in groups if any(n in m or m in n for m in g)]
+        merged = {n}.union(*hit) if hit else {n}
+        groups = [g for g in groups if g not in hit] + [merged]
+    return len(groups)
+
+
+def news_groups(stock_kw, min_stocks=2, names=None):
+    """stock_kw: {code: [(kw, n), ...]} → {kw: [codes]} (각 종목 상위 2 키워드 기준, 2종목↑)
+    names가 있으면 같은 계열은 한 종목으로 센다(2026-10-18: 1~10월 뉴스 테마 91개 중 23개가 지주사·자회사 짝이었다.
+    한 회사 기사를 둘이 나눠 받은 것이라 '여러 종목이 같은 재료'가 아니다)"""
     g = {}
     for code, kws in stock_kw.items():
         for w, _ in kws[:2]:
             g.setdefault(w, []).append(code)
-    return {w: cs for w, cs in g.items() if len(cs) >= min_stocks}
+    return {w: cs for w, cs in g.items()
+            if len(cs) >= min_stocks and (names is None or families(cs, names) >= min_stocks)}
