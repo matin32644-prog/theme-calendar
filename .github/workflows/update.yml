@@ -24,11 +24,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install requests
+      - run: pip install requests anthropic
       - name: run
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TZ: Asia/Seoul
         run: |
           git config user.name "theme-cal-bot"

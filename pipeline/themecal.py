@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from theme_keywords import keyword  # noqa: E402   (2026-10-07 굵은 40개 묶음 → 키워드 테마로 교체)
 import news_keywords as NK  # noqa: E402            (2026-10-07 뉴스 키워드 테마: 페스트 오분류 사건)
 import krx_close as KC  # noqa: E402                (2026-10-14 KRX 정규장 종가 복원: 애프터마켓 섞임 사건)
+import news_review as NR  # noqa: E402              (2026-10-18 뉴스 테마 AI 검토: 향해·북미 오탐 사건)
 import math
 
 # ── 설정 ─────────────────────────────────────────────
@@ -657,16 +658,18 @@ def build():
     stat_rows = []
     months = defaultdict(list)
     search = defaultdict(set)
+    rcache, fresh = load(RAW / "news_review.json", {}), []
     for i, d in enumerate(days):
         day = load(RAW / "days" / f"{d}.json")
         prev_d = days[i - 1] if i else d
-        stock_kw = {}
+        stock_kw, tls = {}, {}
         for s in day["stocks"]:
             if not passes(s):
                 continue
             tl = [x["t"] for x in (gnews(s["name"], d, prev_d, fetch=False) or [])
                   if prev_d + "1530" <= x["dt"] <= d + "1800"]
             tl += [x["t"] for x in (search_news(s["name"], d, fetch=False) or [])]
+            tls[s["code"]] = tl
             stock_kw[s["code"]] = NK.top_keywords(tl, clean_name(s["name"]), stock_names)
         # 네이버에 이미 같은 이름(또는 그걸 포함한 이름)의 테마가 있으면 그쪽 구성이 더 정확하다
         # → 뉴스 테마는 네이버에 없는 사건성 키워드(페스트·데이터센터·중동…)에만 쓴다 (8/13 삼성전기 MLCC 유지)
@@ -677,6 +680,7 @@ def build():
             for k, cs in NK.news_groups(stock_kw).items():
                 if k not in ng and not any(k.rstrip("주株") in name or name in k for name in TSIZE):
                     print(f"뉴스 테마 제외(같은 계열) {d} {k}: {'·'.join(names[c] for c in cs)}")
+        ng = NR.review(d, ng, tls, names, rcache, fresh)   # 규칙을 통과한 후보를 Haiku가 한 번 더 본다. 떨어지면 네이버 테마 단계로
         themes = classify(day["stocks"], sg, ng)
         nx = load(RAW / "nxt" / f"{d}.json", {})
         hist_lead.append({t["name"] for t in themes if t["lead"]})
@@ -783,6 +787,15 @@ def build():
                               default=""),
         "search": {k: sorted(v) for k, v in search.items()}})
     print("build", len(days), "days", len(months), "months")
+    if fresh:
+        save(RAW / "news_review.json", rcache)
+        for f in fresh:
+            print("뉴스 테마 검토", f)
+        last = [f for f in fresh if f[0] == days[-1]]
+        msg = [f"{f[0][4:6]}/{f[0][6:]} «{f[1]}»({'·'.join(f[2])}) 뺌: {f[4]}" for f in last if f[1] != "FAIL" and not f[3]]
+        msg += [f"{f[0][4:6]}/{f[0][6:]} 검토 실패, 규칙 결과로 발행: {'·'.join(f[2])}" for f in last if f[1] == "FAIL"]
+        if msg:                               # 오늘 것만 알린다(지난 날 일괄 검토는 로그로만)
+            notify_admin("🔎 <b>테마 달력</b> 뉴스 테마 검토\n" + "\n".join(html.escape(m) for m in msg))
     stats(stat_rows, days)
     perf(months, days)
 
@@ -1015,18 +1028,21 @@ def publish(msg=None):
     return p.returncode == 0
 
 
-def notify_fail(what):
+def notify_admin(text):
     try:
         TELEGRAM_TOKEN, ADMIN_ID = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("ADMIN_ID")
         if not TELEGRAM_TOKEN:
             sys.path.insert(0, r"C:\kiwoom")
             from kiwoom_config import TELEGRAM_TOKEN, ADMIN_ID
-        what = f"{what} ({'깃허브 액션' if IN_ACTIONS else 'PC'})"
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-                      data={"chat_id": ADMIN_ID, "text": f"⚠️ <b>테마 달력</b> {what} 실패", "parse_mode": "HTML"},
-                      timeout=10)
+                      data={"chat_id": ADMIN_ID, "text": text, "parse_mode": "HTML"}, timeout=10)
     except Exception:
         pass
+
+
+def notify_fail(what):
+    what = f"{what} ({'깃허브 액션' if IN_ACTIONS else 'PC'})"
+    notify_admin(f"⚠️ <b>테마 달력</b> {what} 실패")
 
 
 if __name__ == "__main__":
@@ -1093,6 +1109,9 @@ if __name__ == "__main__":
         print("tradingview", len(tv), tv.get("005930"))
         _, rows = KC.rows_of("005930", (t0 - timedelta(days=10)).strftime("%Y%m%d"))
         print("krx_close", list(KC.krx_closes(rows).items())[-2:])
+        t = "피에스케이홀딩스 '하늘을 향해 불쑥 솟아오른 2027년' 증권사 발표에 강세"   # 10/16 실제 오탐 = 반려가 정답
+        print("review", NR.ask([{"id": "c1", "kw": "향해", "stocks": [{"n": "피에스케이", "titles": [t]},
+                                                                     {"n": "피에스케이홀딩스", "titles": [t]}]}]))
     elif cmd == "daily":
         today = datetime.now(KST).strftime("%Y%m%d")
         if not IN_ACTIONS:                   # PC = 예비 실행. 깃허브 액션이 이미 했으면 건너뜀
