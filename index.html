@@ -18,21 +18,25 @@
   --bg:#f4f5f9; --card:#fff; --ink:#1c2033; --muted:#80879a; --line:#e3e6ee; --line2:#cfd4df;
   --lead:#b8213a; --lead-bg:#fdecef; --nxt:#6a43c4; --nxt-bg:#efe9fb; --up:#c8233b; --down:#2a62c9;
   --navy:#1f2340; --gold:#b8862b; --today:#fff6d6; --chip:#f1f2f6; --hit:#ffe08a; --ipo:#13795b; --ipo-bg:#e3f5ee;
+  --page:#ffffff; --cell:#f7f8fb; --dim:#9aa0b2; --king:#a87a22; --hol:#c42b3f;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#11131b; --card:#1a1d28; --ink:#e7e9f0; --muted:#8b91a3; --line:#2a2e3c; --line2:#373c4d;
     --lead:#ff6b81; --lead-bg:#3a1d25; --nxt:#b49cff; --nxt-bg:#2a2240; --up:#ff6b81; --down:#6ea2ff;
     --navy:#c9cdf2; --gold:#e0b25c; --today:#3a3320; --chip:#252938; --hit:#6b5a1c; --ipo:#4fd1a5; --ipo-bg:#173a30;
+    --page:#12141c; --cell:#1b1e29; --dim:#6f7689; --king:#e0b25c; --hol:#ff6b7f;
   }
 }
 :root[data-theme="dark"]{
   --bg:#11131b; --card:#1a1d28; --ink:#e7e9f0; --muted:#8b91a3; --line:#2a2e3c; --line2:#373c4d;
   --lead:#ff6b81; --lead-bg:#3a1d25; --nxt:#b49cff; --nxt-bg:#2a2240; --up:#ff6b81; --down:#6ea2ff;
   --navy:#c9cdf2; --gold:#e0b25c; --today:#3a3320; --chip:#252938; --hit:#6b5a1c; --ipo:#4fd1a5; --ipo-bg:#173a30;
+  --page:#12141c; --cell:#1b1e29; --dim:#6f7689; --king:#e0b25c; --hol:#ff6b7f;
 }
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--ink);
+[hidden]{display:none !important}
+html,body{margin:0;background:var(--page);color:var(--ink);
   font-family:"Pretendard Variable",Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   -webkit-text-size-adjust:100%}
 a{color:inherit}
@@ -54,45 +58,48 @@ h1 span{color:var(--muted)}
 .hitbar b{color:var(--ink)}
 .hitbar a{display:inline-block;margin:0 6px 0 0;padding:1px 8px;border-radius:999px;background:var(--chip);
   text-decoration:none;color:var(--ink);cursor:pointer}
-.months{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:18px 0 10px}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand{margin:0;font-size:17px;font-weight:800;color:var(--navy);letter-spacing:-.01em}
+.tools{display:flex;gap:6px}
+.tb2{border:1px solid var(--line2);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer;line-height:1.2}
+.tb2.on{background:var(--navy);color:var(--card);border-color:var(--navy)}
+.search{margin-top:12px}
+.ymh{display:flex;align-items:center;justify-content:center;gap:26px;margin:20px 0 12px}
+.ymh button{border:0;background:none;color:var(--muted);font:inherit;font-size:26px;line-height:1;padding:4px 10px;cursor:pointer}
+.ymh button[disabled]{opacity:.25;cursor:default}
+.ymh .ymt{color:var(--navy);text-align:center;padding:0;font-size:inherit}
+.ymt small{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:2px}
+.ymt b{font-size:34px;font-weight:900;letter-spacing:-.02em}
+.months{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;margin:0 0 14px}
 .months select{padding:8px 10px;border-radius:8px;border:1px solid var(--line2);background:var(--card);color:var(--ink);font:inherit}
 .mbtn{position:relative;border:1px solid var(--line2);background:var(--card);color:var(--ink);border-radius:999px;
   padding:7px 14px;font:inherit;font-size:14px;cursor:pointer}
 .mbtn[disabled]{opacity:.35;cursor:default}
 .mbtn.on{background:var(--navy);color:var(--card);border-color:var(--navy);font-weight:700}
-.mbtn.has::after{content:"";position:absolute;top:2px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--lead)}
-.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:6px 0 10px}
-.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-.cal{border-top:2px solid var(--navy);background:var(--card);border-left:1px solid var(--line);}
-.row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
-.hd div{padding:10px 0;text-align:center;font-size:12px;letter-spacing:.12em;color:var(--muted);
-  border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg)}
-.cell{min-height:118px;padding:7px 8px 8px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
-  cursor:pointer;overflow:hidden;min-width:0;position:relative}
-.cell:hover{background:var(--chip)}
-.heat{position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--up)}
-.heat.h1{opacity:.16}.heat.h2{opacity:.36}.heat.h3{opacity:.6}.heat.h4{opacity:.92}
-.cell.out .dn{color:var(--muted)}
-.cell.out{opacity:.72}
+.cal{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
+.wd{text-align:center;font-size:12px;color:var(--muted);padding:2px 0 3px}
+.cell{min-height:96px;padding:6px 6px 8px;background:var(--cell);border:1px solid var(--line);border-radius:8px;cursor:pointer;
+  overflow:hidden;min-width:0;position:relative;display:flex;flex-direction:column;align-items:center;text-align:center}
+.cell:hover{border-color:var(--line2)}
+.cell.out .dn{opacity:.45}
 .cell.today{background:var(--today)}
 .cell.hit{box-shadow:inset 0 0 0 2px var(--gold)}
 .cell.empty{cursor:default}
-.top{display:flex;justify-content:space-between;align-items:baseline;gap:4px}
-.dn{font-size:13px;font-weight:600}
-.q{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--muted);white-space:nowrap}
-.q.u{color:var(--up)} .q.d{color:var(--down)}
-.t{font-size:13px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.t.l{color:var(--lead);font-weight:700}
-.t.o{color:var(--ink)}
-.more{font-size:11px;color:var(--muted);margin-top:2px}
-.nx{display:block;font-size:11.5px;color:var(--nxt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-.nx em{font-style:normal;font-size:10px;background:var(--nxt-bg);padding:0 4px;border-radius:3px;margin-right:4px;font-weight:700}
-.hol{color:var(--muted);font-size:12.5px;margin-top:6px}
+.dn{align-self:flex-start;font-size:12px;font-weight:700;color:var(--muted);line-height:1;margin-bottom:8px}
+.big{width:100%;font-size:18px;font-weight:900;line-height:1.2;letter-spacing:-.03em;color:var(--navy);white-space:nowrap;overflow:hidden}
+.big.dim{color:var(--dim)}
+.big.wrap{max-height:2.45em;white-space:normal;word-break:keep-all;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.kg{width:100%;font-size:13px;font-weight:700;color:var(--king);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kg.dim{color:var(--dim)}
+.hol{margin:auto 0;font-size:20px;font-weight:900;color:var(--hol)}
 .ipo{display:block;font-size:11.5px;color:var(--ipo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .ipo em{font-style:normal;font-size:10px;background:var(--ipo-bg);padding:0 4px;border-radius:3px;margin-right:4px;font-weight:700}
 .ipobox{background:var(--ipo-bg);border-radius:10px;padding:10px 12px;margin-top:7px;font-size:13.5px;line-height:1.6}
 .ipobox b{color:var(--ipo)}
-.foot{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.7}
+.foot{margin-top:14px;font-size:12.5px;color:var(--muted);line-height:1.7;text-align:center}
+.foot a{cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.rules{display:none;text-align:left;margin-top:8px;background:var(--chip);border-radius:10px;padding:10px 12px}
+.rules.open{display:block}
 /* 모달 */
 .ov{position:fixed;inset:0;background:rgba(10,12,20,.45);display:none;z-index:50}
 .sheet{position:fixed;left:50%;top:4vh;transform:translateX(-50%);width:min(680px,100% - 24px);max-height:92vh;overflow:auto;
@@ -174,35 +181,31 @@ h1 span{color:var(--muted)}
 .pfm{margin-top:8px;width:100%}
 .pfn{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.55}
 @media (max-width:640px){
-  .wrap{padding:16px 10px 40px}
-  h1{font-size:26px}
-  .cell{min-height:96px;padding:5px 4px}
-  .t{font-size:11px;line-height:1.35;white-space:normal;word-break:keep-all;overflow-wrap:anywhere;margin-bottom:2px}
-  .q{display:none}
-  .dn{font-size:12px}
-  .nx,.more,.ipo{font-size:10px}
-  .hd div{font-size:10.5px;letter-spacing:.05em}
+  .wrap{padding:14px 10px 40px}
+  .cal{gap:3px}
+  .cell{min-height:72px;padding:4px 2px 6px;border-radius:6px}
+  .dn{font-size:9.5px;margin:1px 0 6px 2px}
+  .big{font-size:14px}
+  .kg{font-size:10px;margin-top:3px}
+  .hol{font-size:16px}
+  .ipo{font-size:10px}
+  .wd{font-size:10.5px}
+  .ymh{margin:16px 0 10px}
+  .ymt b{font-size:28px}
   .sheet{top:auto;bottom:0;transform:translateX(-50%);width:100%;border-radius:18px 18px 0 0;max-height:88vh;padding:18px 14px 22px}
 }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="ym" id="ym"></div>
-  <h1>주도주 <span>달력</span></h1>
-  <div class="rule"></div>
-  <div class="search">
+  <div class="bar"><h1 class="brand">주도주 달력</h1><div class="tools"><button class="tb2" id="sbtn">검색</button><button class="tb2" id="kingb" title="찐 대장 모아보기">👑</button><button class="tb2" id="statb">통계</button></div></div>
+  <div class="search" id="sbox" hidden>
     <input id="q" placeholder="테마·종목 검색 (예: 원익IPS, 로봇)" autocomplete="off">
     <div class="sugg" id="sugg"></div>
   </div>
   <div class="hitbar" id="hitbar"></div>
-  <div class="months" id="months"></div>
-  <div class="legend">
-    <span><i style="background:var(--lead)"></i>본장 주도 테마</span>
-    <span><i style="background:var(--ink)"></i>기타 테마</span>
-    <span><i style="background:var(--nxt)"></i>넥장(장후) 강세</span>
-    <span>날짜를 누르면 주도주가 나옵니다</span>
-  </div>
+  <div class="ymh"><button id="prevm" aria-label="이전 달">‹</button><button class="ymt" id="ymt" title="달 고르기"><small id="yy"></small><b id="mm"></b></button><button id="nextm" aria-label="다음 달">›</button></div>
+  <div class="months" id="months" hidden></div>
   <div class="cal" id="cal"></div>
   <div class="foot" id="foot"></div>
 </div>
@@ -230,10 +233,38 @@ function nxtThemes(day){
   return day.themes.filter(t=>!t.etc && t.stocks.filter(s=>s.nxe!=null && s.nxe>=3).length>=2).map(t=>t.name);
 }
 
+// 칸 단순화 C안(2026-10-26): 큰 글자 = 그날 1등 테마(주도 아니면 흐리게), 괄호 = 그 테마 거래대금 1위.
+// 테마 없는 날은 «개별 장세» + 그날 최고 상승 종목. 나머지(2·3등 테마·넥장·온도)는 날짜를 누르면 나오는 상세 창에
+const SHORT = {"서울고속버스터미널 재개발 수혜":"고속터미널 재개발", "부동산 보유 자산주":"부동산 자산주", "양자암호·양자컴퓨팅":"양자컴퓨팅"};
+function cellOf(day){
+  const th = day.themes.filter(t=>!t.etc);
+  if (th.length){
+    const t = th[0], top = t.stocks.reduce((a,b)=>(b.val||0)>(a.val||0)?b:a, t.stocks[0]);
+    return {big: SHORT[t.name]||t.name, lead: !!t.lead, king: top ? top.n : ""};
+  }
+  const all = day.themes.flatMap(t=>t.stocks);
+  if (!all.length) return {big:"급등 없음", lead:false, king:""};
+  return {big:"개별 장세", lead:false, king: all.reduce((a,b)=>(b.chg||0)>(a.chg||0)?b:a).n};
+}
+function fitCells(){
+  document.querySelectorAll("#cal .big,#cal .kg").forEach(el=>{ el.style.fontSize=""; el.classList.remove("wrap"); });
+  document.querySelectorAll("#cal .big").forEach(el=>{
+    const base = parseFloat(getComputedStyle(el).fontSize); let fs = base;
+    while (el.scrollWidth > el.clientWidth + 0.5 && fs > base*0.68){ fs -= 0.5; el.style.fontSize = fs+"px"; }
+    if (el.scrollWidth > el.clientWidth + 0.5){ el.classList.add("wrap"); el.style.fontSize = (base*0.8)+"px"; }
+  });
+  document.querySelectorAll("#cal .kg").forEach(el=>{
+    const base = parseFloat(getComputedStyle(el).fontSize); let fs = base;
+    while (el.scrollWidth > el.clientWidth + 0.5 && fs > base*0.8){ fs -= 0.5; el.style.fontSize = fs+"px"; }
+  });
+}
+
 async function render(m){
   cur = m;
   const [y, mo] = m.split("-").map(Number);
-  $("#ym").textContent = y+"년 "+mo+"월";
+  $("#yy").textContent = y; $("#mm").textContent = mo+"월";
+  const mi = IDX.months.indexOf(m);
+  $("#prevm").disabled = mi <= 0; $("#nextm").disabled = mi < 0 || mi >= IDX.months.length-1;
   renderMonths(y);
   const prev = new Date(y, mo-2, 1), next = new Date(y, mo, 1);
   const pm = prev.getFullYear()+"-"+String(prev.getMonth()+1).padStart(2,"0");
@@ -243,24 +274,17 @@ async function render(m){
   const start = new Date(first); start.setDate(first.getDate() - ((first.getDay()+6)%7));
   const lastData = Object.keys(map).sort().pop() || "";
   const today = ymd(new Date());
-  let h = '<div class="row hd"><div>MON</div><div>TUE</div><div>WED</div><div>THU</div><div>FRI</div></div>';
+  let h = ["월","화","수","목","금"].map(w=>'<div class="wd">'+w+'</div>').join("");
   for (let d = new Date(start); d <= last || d.getDay() !== 1; d.setDate(d.getDate()+1)){
     const wd = d.getDay();
-    if (wd === 1) h += '<div class="row">';
     if (wd >= 1 && wd <= 5){
       const k = ymd(d), day = map[k], out = d.getMonth() !== mo-1;
       let cls = "cell" + (out?" out":"") + (k===today?" today":"") + (hits.has(k)?" hit":"") + (day?"":" empty");
-      let inner = '<div class="top"><span class="dn">'+d.getDate()+'</span>';
-      if (day) inner += '<span class="q '+(day.kosdaq>=0?"u":"d")+'">Q '+pct(day.kosdaq)+'</span>';
-      inner += '</div>';
+      let inner = '<span class="dn">'+d.getDate()+'</span>';
       if (day){
-        const lead = day.themes.filter(t=>t.lead), oth = day.themes.filter(t=>!t.lead);
-        lead.forEach(t=> inner += '<div class="t l">'+esc(t.name)+'</div>');
-        if (oth.length) inner += '<div class="t o">'+esc(oth[0].name)+'</div>';
-        if (oth.length>1) inner += '<div class="more">외 '+(oth.length-1)+'개</div>';
-        if (!day.themes.length) inner += '<div class="hol">급등 종목 없음</div>';
-        nxtThemes(day).slice(0,2).forEach(n=> inner += '<span class="nx"><em>장후</em>'+esc(n)+'</span>');
-        if (day.temp && day.temp.lv > 0) inner += '<i class="heat h'+day.temp.lv+'"></i>';
+        const c = cellOf(day), dim = c.lead ? "" : " dim";
+        inner += '<div class="big'+dim+'">'+esc(c.big)+'</div>';
+        if (c.king) inner += '<div class="kg'+dim+'">('+esc(c.king)+')</div>';
       } else if (k < lastData && k < today && !out && !IPO[k]){
         inner += '<div class="hol">휴장</div>';
       }
@@ -268,20 +292,22 @@ async function render(m){
       if (!day && IPO[k]) cls = cls.replace(" empty","");
       h += '<div class="'+cls+'" data-d="'+k+'">'+inner+'</div>';
     }
-    if (wd === 5) h += '</div>';
     if (wd === 0 && d > last) break;
   }
   $("#cal").innerHTML = h;
+  fitCells();
   document.querySelectorAll(".cell[data-d]").forEach(c=>{
     const k=c.dataset.d; if (map[k]) c.onclick=()=>openDay(map[k]); else if (IPO[k]) c.onclick=()=>openIpo(k);
   });
   const n = Object.keys(map).filter(k=>k.startsWith(m.replace("-",""))).length;
   const r = IDX.rule;
-  $("#foot").innerHTML = "이 달 기록 "+n+"거래일 · 평일 16시 30분(본장), 20시 40분(넥장) 무렵 자동 갱신 · 마지막 갱신 "+esc(IDX.updated)+
+  $("#foot").innerHTML = '<a id="rulesb">기준 보기</a> · 이 달 기록 '+n+'거래일 · 마지막 갱신 '+esc(IDX.updated)+
+    '<div class="rules" id="rules">칸 글자: 큰 글자 = 그날 1등 테마(주도 기준을 못 넘은 날은 흐린 색) · 괄호 = 그 테마 거래대금 1위. 테마 없는 «개별 장세» 날은 그날 최고 상승 종목. 날짜를 누르면 주도주·이유 기사·넥장·그날 온도가 나옵니다'+
     "<br>급등 기준: 정규장 +"+r.chg+"% 이상 · 거래대금 "+r.val+"억 이상. 테마 순위 = 거래대금 점수 합("+(r.unit||200)+"억=1점, 10배마다 +1점). "+
     "주도 테마 = 급등 "+r.lead_min+"종목 이상 또는 점수 "+(r.lead_score||4)+"점 이상인 상위 3개. 테마 이름은 네이버 테마 키워드 기준"+
     (IDX.backfill_until ? "<br>"+fmtD(IDX.backfill_until)+"까지는 소급 기록(테마 구성은 2026-10 기준이라 근사치, 넥장 없음)" : "")+
-    "<br>칸 아래 빨간 막대 = 그날 온도. 4% 넘게 오른 종목 수를 기록 전체와 비교한 5단계(진할수록 뜨거운 장)";
+    "<br>평일 16시 30분(본장), 20시 40분(넥장) 무렵 자동 갱신</div>";
+  $("#rulesb").onclick = ()=> $("#rules").classList.toggle("open");
 }
 function fmtD(k){ return k.slice(0,4)+"-"+k.slice(4,6)+"-"+k.slice(6); }
 
@@ -290,15 +316,20 @@ function renderMonths(y){
   let h = '<select id="ysel">'+ys.map(v=>'<option'+(v===y?' selected':'')+'>'+v+'</option>').join("")+'</select>';
   for (let i=1;i<=12;i++){
     const m = y+"-"+String(i).padStart(2,"0"), has = IDX.months.includes(m) || IPOM.has(m);
-    h += '<button class="mbtn'+(m===cur?" on":"")+(has?" has":"")+'" '+(has?'':'disabled')+' data-m="'+m+'">'+i+'월</button>';
+    h += '<button class="mbtn'+(m===cur?" on":"")+'" '+(has?'':'disabled')+' data-m="'+m+'">'+i+'월</button>';
   }
-  h += '<button class="statbtn" id="kingb">👑 모아보기</button><button class="statbtn" id="statb" style="margin-left:6px">통계</button>';
   $("#months").innerHTML = h;
-  $("#statb").onclick = openStats;
-  $("#kingb").onclick = ()=>openKings(cur);
-  document.querySelectorAll(".mbtn[data-m]").forEach(b=>b.onclick=()=>render(b.dataset.m));
+  document.querySelectorAll(".mbtn[data-m]").forEach(b=>b.onclick=()=>{ $("#months").hidden = true; render(b.dataset.m); });
   $("#ysel").onchange = e => { const ms = IDX.months.filter(m=>m.startsWith(e.target.value)); if (ms.length) render(ms[ms.length-1]); };
 }
+$("#statb").onclick = openStats;
+$("#kingb").onclick = ()=>openKings(cur);
+$("#sbtn").onclick = ()=>{ const b = $("#sbox"); b.hidden = !b.hidden; $("#sbtn").classList.toggle("on", !b.hidden); if (!b.hidden) $("#q").focus(); };
+$("#ymt").onclick = ()=>{ $("#months").hidden = !$("#months").hidden; };
+$("#prevm").onclick = ()=>{ const i = IDX.months.indexOf(cur); if (i > 0) render(IDX.months[i-1]); };
+$("#nextm").onclick = ()=>{ const i = IDX.months.indexOf(cur); if (i >= 0 && i < IDX.months.length-1) render(IDX.months[i+1]); };
+let fitT; window.addEventListener("resize", ()=>{ clearTimeout(fitT); fitT = setTimeout(fitCells, 150); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(()=>fitCells());
 
 function stockRow(s, tn){
   const pr = '<span class="k">본장</span><span class="'+(s.chg>=0?"u":"d")+'">'+pct(s.chg,1)+'</span>' +
